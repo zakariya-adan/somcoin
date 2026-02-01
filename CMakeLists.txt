@@ -1,60 +1,122 @@
-# Copyright (c) 2023-present The Bitcoin Core developers
+# Copyright (c) 2024-present The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or https://opensource.org/license/mit/.
 
-add_library(bitcoin_crypto STATIC EXCLUDE_FROM_ALL
-  aes.cpp
-  chacha20.cpp
-  chacha20poly1305.cpp
-  hex_base.cpp
-  hkdf_sha256_32.cpp
-  hmac_sha256.cpp
-  hmac_sha512.cpp
-  muhash.cpp
-  poly1305.cpp
-  ripemd160.cpp
-  sha1.cpp
-  sha256.cpp
-  sha256_sse4.cpp
-  sha3.cpp
-  sha512.cpp
-  siphash.cpp
-  ../support/cleanse.cpp
-)
+include(GNUInstallDirs)
 
-target_link_libraries(bitcoin_crypto
+# TODO: libbitcoinkernel is a work in progress consensus engine
+#       library, as more and more modules are decoupled from the
+#       consensus engine, this list will shrink to only those
+#       which are absolutely necessary.
+add_library(bitcoinkernel
+  bitcoinkernel.cpp
+  chain.cpp
+  checks.cpp
+  chainparams.cpp
+  coinstats.cpp
+  context.cpp
+  cs_main.cpp
+  disconnected_transactions.cpp
+  mempool_removal_reason.cpp
+  ../arith_uint256.cpp
+  ../chain.cpp
+  ../coins.cpp
+  ../compressor.cpp
+  ../consensus/merkle.cpp
+  ../consensus/tx_check.cpp
+  ../consensus/tx_verify.cpp
+  ../dbwrapper.cpp
+  ../deploymentinfo.cpp
+  ../deploymentstatus.cpp
+  ../flatfile.cpp
+  ../hash.cpp
+  ../logging.cpp
+  ../node/blockstorage.cpp
+  ../node/chainstate.cpp
+  ../node/utxo_snapshot.cpp
+  ../policy/ephemeral_policy.cpp
+  ../policy/feerate.cpp
+  ../policy/packages.cpp
+  ../policy/policy.cpp
+  ../policy/rbf.cpp
+  ../policy/settings.cpp
+  ../policy/truc_policy.cpp
+  ../pow.cpp
+  ../primitives/block.cpp
+  ../primitives/transaction.cpp
+  ../pubkey.cpp
+  ../random.cpp
+  ../randomenv.cpp
+  ../script/interpreter.cpp
+  ../script/script.cpp
+  ../script/script_error.cpp
+  ../script/sigcache.cpp
+  ../script/solver.cpp
+  ../signet.cpp
+  ../streams.cpp
+  ../support/lockedpool.cpp
+  ../sync.cpp
+  ../txdb.cpp
+  ../txgraph.cpp
+  ../txmempool.cpp
+  ../uint256.cpp
+  ../util/chaintype.cpp
+  ../util/check.cpp
+  ../util/expected.cpp
+  ../util/feefrac.cpp
+  ../util/fs.cpp
+  ../util/fs_helpers.cpp
+  ../util/hasher.cpp
+  ../util/moneystr.cpp
+  ../util/rbf.cpp
+  ../util/serfloat.cpp
+  ../util/signalinterrupt.cpp
+  ../util/syserror.cpp
+  ../util/threadnames.cpp
+  ../util/time.cpp
+  ../util/tokenpipe.cpp
+  ../validation.cpp
+  ../validationinterface.cpp
+  ../versionbits.cpp
+  $<TARGET_OBJECTS:bitcoin_clientversion>
+  $<TARGET_OBJECTS:bitcoin_crypto>
+  $<TARGET_OBJECTS:leveldb>
+  $<TARGET_OBJECTS:crc32c>
+)
+target_link_libraries(bitcoinkernel
   PRIVATE
     core_interface
+    secp256k1_objs
+    $<$<PLATFORM_ID:Windows>:bcrypt>
+    $<TARGET_NAME_IF_EXISTS:USDT::headers>
+  PUBLIC
+    Boost::headers
 )
 
-if(HAVE_SSE41)
-  target_compile_definitions(bitcoin_crypto PRIVATE ENABLE_SSE41)
-  target_sources(bitcoin_crypto PRIVATE sha256_sse41.cpp)
-  set_property(SOURCE sha256_sse41.cpp PROPERTY
-    COMPILE_OPTIONS ${SSE41_CXXFLAGS}
-  )
+target_include_directories(bitcoinkernel PRIVATE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src/leveldb/include>)
+
+# Add a convenience libbitcoinkernel target as a synonym for bitcoinkernel.
+add_custom_target(libbitcoinkernel)
+add_dependencies(libbitcoinkernel bitcoinkernel)
+
+get_target_property(bitcoinkernel_type bitcoinkernel TYPE)
+if(bitcoinkernel_type STREQUAL "STATIC_LIBRARY")
+  target_compile_definitions(bitcoinkernel PUBLIC BITCOINKERNEL_STATIC)
 endif()
 
-if(HAVE_AVX2)
-  target_compile_definitions(bitcoin_crypto PRIVATE ENABLE_AVX2)
-  target_sources(bitcoin_crypto PRIVATE sha256_avx2.cpp)
-  set_property(SOURCE sha256_avx2.cpp PROPERTY
-    COMPILE_OPTIONS ${AVX2_CXXFLAGS}
-  )
-endif()
+configure_file(${PROJECT_SOURCE_DIR}/libbitcoinkernel.pc.in ${PROJECT_BINARY_DIR}/libbitcoinkernel.pc @ONLY)
+install(FILES ${PROJECT_BINARY_DIR}/libbitcoinkernel.pc DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig" COMPONENT libbitcoinkernel)
 
-if(HAVE_SSE41 AND HAVE_X86_SHANI)
-  target_compile_definitions(bitcoin_crypto PRIVATE ENABLE_SSE41 ENABLE_X86_SHANI)
-  target_sources(bitcoin_crypto PRIVATE sha256_x86_shani.cpp)
-  set_property(SOURCE sha256_x86_shani.cpp PROPERTY
-    COMPILE_OPTIONS ${SSE41_CXXFLAGS} ${X86_SHANI_CXXFLAGS}
-  )
-endif()
+install(TARGETS bitcoinkernel
+  RUNTIME
+    DESTINATION ${CMAKE_INSTALL_BINDIR}
+    COMPONENT libbitcoinkernel
+  LIBRARY
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    COMPONENT libbitcoinkernel
+  ARCHIVE
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    COMPONENT libbitcoinkernel
+)
 
-if(HAVE_ARM_SHANI)
-  target_compile_definitions(bitcoin_crypto PRIVATE ENABLE_ARM_SHANI)
-  target_sources(bitcoin_crypto PRIVATE sha256_arm_shani.cpp)
-  set_property(SOURCE sha256_arm_shani.cpp PROPERTY
-    COMPILE_OPTIONS ${ARM_SHANI_CXXFLAGS}
-  )
-endif()
+install(FILES bitcoinkernel.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT libbitcoinkernel)
