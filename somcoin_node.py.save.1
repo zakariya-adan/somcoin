@@ -1,0 +1,3701 @@
+# UPDATED 2026
+from flask import Flask, request, jsonify, send_from_directory, render_template
+import requests
+import hashlib
+import time
+import json
+import os
+import base64
+import socket
+import threading
+import multiprocessing
+from ecdsa import VerifyingKey, SECP256k1
+
+def sha(data):
+    return hashlib.sha256(data.encode()).hexdigest()
+
+
+SERVER_IP = "167.86.117.249"
+
+app = Flask(__name__)
+
+MAX_DIFFICULTY = 4
+MIN_DIFFICULTY = 2
+
+def get_new_difficulty(chain):
+    if len(chain) < 10:
+        return 3
+
+    last_block = chain[-1]
+    prev_block = chain[-10]
+
+    time_taken = last_block["timestamp"] - prev_block["timestamp"]
+    expected_time = 10 * 60
+
+    difficulty = last_block.get("difficulty", 3)
+
+    if time_taken < expected_time:
+        difficulty += 1
+    elif time_taken > expected_time:
+        difficulty -= 1
+
+    # 🔒 clamp
+    if difficulty > MAX_DIFFICULTY:
+        difficulty = MAX_DIFFICULTY
+    if difficulty < MIN_DIFFICULTY:
+        difficulty = MIN_DIFFICULTY
+
+    return difficulty
+
+# ==================================================
+# P2P CONFIG (ULTRA PRO GLOBAL VERSION 🚀)
+# ==================================================
+
+# 🔥 SCALE UP (GLOBAL NETWORK)
+MAX_PEERS = 1000   # ⬅️ muhiim
+
+p2p_peers = set()
+peer_ips = set()
+banned_ips = set()
+peer_id_map = {}
+
+# 📊 PEER INTELLIGENCE (SMART NETWORK)
+peer_scores = {}    # ip -> score
+peer_failures = {}  # ip -> fail count
+
+# ✅ ONE PORT ONLY (STANDARD)
+ALLOWED_PORTS = {9334}
+
+# 🌍 SEED NODES (CORE NETWORK)
+SEED_NODES = [
+    "167.86.117.249:9334",
+    "23.94.66.117:9334",
+
+    # 🔥 ADD YOUR VPS NODES HERE
+    # "YOUR_VPS_IP:9334",
+    # "YOUR_VPS_IP2:9334",
+]
+
+# 🔒 MAX LIMIT (ANTI-SPAM)
+MAX_CONNECTIONS_PER_IP = 2
+
+# ⛔ BAN RULES
+MAX_FAILURES = 5
+BAN_TIME = 600  # seconds
+
+# =========================
+# 🧠 PEER HEALTH SYSTEM (FINAL PRO)
+# =========================
+import time
+import threading
+import requests
+
+peer_health = {}
+peer_failures = {}
+peer_scores = {}
+
+MAX_FAILURES = 5
+PEER_TIMEOUT = 60
+
+# 🔒 THREAD LOCK (ANTI-RACE CONDITION)
+peers_lock = threading.Lock()
+
+# =========================
+# MARK ALIVE
+# =========================
+def mark_peer_alive(peer):
+    peer_health[peer] = time.time()
+    peer_failures[peer] = 0
+
+# =========================
+# REWARD PEER
+# =========================
+def reward_peer(peer):
+    peer_scores[peer] = peer_scores.get(peer, 0) + 1
+# =========================
+# PUNISH PEER (SMART + STABLE + SEED PROTECTED)
+# =========================
+def punish_peer(peer):
+
+    # 🚫 NEVER REMOVE SEED NODES
+    if peer in SEED_NODES:
+        return
+
+    # 📉 increase failure count
+    peer_failures[peer] = peer_failures.get(peer, 0) + 1
+
+    # 🔥 soft penalty
+    peer_scores[peer] = peer_scores.get(peer, 0) - 1
+
+    # 🧠 smart remove condition
+    if peer_failures[peer] >= 10 or peer_scores.get(peer, 0) < -10:
+
+        print("🚫 Removing bad peer:", peer)
+
+        with peers_lock:
+            p2p_peers.discard(peer)
+
+        # 🧹 clean memory
+        peer_health.pop(peer, None)
+        peer_failures.pop(peer, None)
+        peer_scores.pop(peer, None)
+
+# =========================
+# SMART DISCOVERY (SAFE + FILTERED)
+# =========================
+def smart_discovery():
+    while True:
+        try:
+            # 🔥 choose best peers only
+            best_peers = sorted(
+                list(p2p_peers),
+                key=lambda p: peer_scores.get(p, 0),
+                reverse=True
+            )[:10]
+
+            for peer in best_peers:
+
+                # ❌ skip self
+                if peer == f"{SERVER_IP}:{P2P_PORT}":
+                    continue
+
+                try:
+                    ip, port = peer.split(":")
+                    port = int(port)
+
+                    # 🔒 safe request
+                    r = requests.get(f"http://{ip}:{port}/peers", timeout=3)
+
+                    if r.status_code != 200:
+                        punish_peer(peer)
+                        continue
+
+                    reward_peer(peer)
+
+                    data = r.json()
+                    new_peers = data.get("peers", [])
+
+                    for new_peer in new_peers:
+
+                        try:
+                            nip, nport = new_peer.split(":")
+                            nport = int(nport)
+
+                            # 🔒 allow only correct port
+                            if nport != P2P_PORT:
+                                continue
+
+                            # 🚫 LIMIT NETWORK SIZE (ANTI-SPAM)
+                            if len(p2p_peers) >= 100:
+                                break   # 🔥 important (ha continue noqon)
+
+                            # 🚫 block suspicious IPs
+                            if (
+                                nip.startswith("0.") or
+                                nip.startswith("127.") or
+                                nip.startswith("255.") or
+                                nip == "0.0.0.0"
+                            ):
+                                continue
+
+                            # 🚫 skip self
+                            if nip == SERVER_IP:
+                                continue
+
+                            # 🚫 duplicate IP spam
+                            if nip in peer_ips:
+                                continue
+
+                            clean_peer = f"{nip}:{nport}"
+
+                            with peers_lock:
+                                if clean_peer not in p2p_peers:
+                                    p2p_peers.add(clean_peer)
+                                    peer_ips.add(nip)              # 🔥 muhiim
+                                    peer_scores[clean_peer] = 0
+                                    print("🌐 New peer:", clean_peer)
+
+                        except:
+                            continue
+
+                except Exception:
+                    punish_peer(peer)
+
+        except Exception as e:
+            print("Discovery error:", e)
+
+        time.sleep(10)
+
+
+def ensure_minimum_peers():
+    MIN_PEERS = 8
+    MAX_PEERS = 100
+
+    while True:
+        try:
+            with peers_lock:
+                current = len(p2p_peers)
+
+            # ⚠️ haddii peers yar yihiin
+            if current < MIN_PEERS:
+                print(f"⚠️ Low peers ({current}) → finding new peers...")
+
+                # =========================
+                # 🔁 RECONNECT SEEDS
+                # =========================
+                for seed in SEED_NODES:
+                    try:
+                        ip, port = seed.split(":")
+                        port = int(port)
+
+                        # 🚫 invalid IP block
+                        if (
+                            ip.startswith("0.") or
+                            ip.startswith("127.") or
+                            ip.startswith("255.") or
+                            ip == "0.0.0.0"
+                        ):
+                            continue
+
+                        # 🚫 duplicate IP
+                        if ip in peer_ips:
+                            continue
+
+                        s = socket.socket()
+                        s.settimeout(3)
+                        s.connect((ip, port))
+
+                        s.sendall((json.dumps({
+                            "type": "hello",
+                            "port": P2P_PORT,
+                            "node_id": NODE_ID,
+                            "public_key": NODE_PUBLIC_KEY,
+                            "signature": sign_message(NODE_ID)
+                        }) + "\n").encode())
+
+                        s.close()
+
+                        with peers_lock:
+                            if len(p2p_peers) < MAX_PEERS:
+                                p2p_peers.add(seed)
+                                peer_ips.add(ip)              # 🔥 muhiim
+                                peer_scores[seed] = 5         # 🔥 seed trust
+                                mark_peer_alive(seed)
+
+                        print("🔁 Reconnected seed:", seed)
+
+                    except:
+                        continue
+
+                # =========================
+                # 🌐 RANDOM BOOTSTRAP
+                # =========================
+                try:
+                    random_bootstrap()
+                except:
+                    pass
+
+                # =========================
+                # 🔄 FORCE DISCOVERY
+                # =========================
+                try:
+                    request_peers()
+                except:
+                    pass
+
+        except Exception as e:
+            print("Ensure peer error:", e)
+
+        time.sleep(10)
+
+# =========================
+# 🔥 EXTRA FUNCTIONS (ADD HERE)
+# =========================
+
+def peer_boost():
+    while True:
+        try:
+            with peers_lock:
+                count = len(p2p_peers)
+
+            if count < 5:
+                print("🚀 Boosting peers...")
+                random_bootstrap()
+                request_peers()
+
+        except Exception as e:
+            print("Peer boost error:", e)
+
+        time.sleep(15)
+
+
+def auto_resolve_orphans():
+    while True:
+        try:
+            if len(p2p_peers) < 2:
+                time.sleep(5)
+                continue
+
+            if orphan_blocks_count() > 3:
+                print("⚠️ Too many orphans → forcing sync...")
+                request_chain()
+
+        except Exception as e:
+            print("Orphan fix error:", e)
+
+        time.sleep(10)
+
+
+def safe_save_blockchain():
+    try:
+        tmp_file = "blockchain.json.tmp"
+        final_file = "blockchain.json"
+
+        with open(tmp_file, "w") as f:
+            json.dump(blockchain, f)
+
+        os.replace(tmp_file, final_file)
+
+    except Exception as e:
+        print("Save error:", e)
+
+# ==================================================
+# 🌍 AUTO SEED EXPANSION (GLOBAL NETWORK GROWTH)
+# ==================================================
+
+def expand_seed_nodes():
+    global SEED_NODES
+
+    try:
+        for peer in list(p2p_peers):
+
+            # 🚫 skip duplicates
+            if peer in SEED_NODES:
+                continue
+
+            ip = peer.split(":")[0]
+
+            # 🚫 skip banned
+            if ip in banned_ips:
+                continue
+
+            # ✅ add new seed
+            SEED_NODES.append(peer)
+
+        # 🔒 limit seeds (important)
+        SEED_NODES = list(set(SEED_NODES))[:50]
+
+        print("🌍 Seeds expanded:", len(SEED_NODES))
+
+    except Exception as e:
+        print("Seed expand error:", e)
+
+
+# ==================================================
+# 🔁 AUTO SEED EXPAND LOOP
+# ==================================================
+
+def auto_seed_expand():
+    while True:
+        try:
+            expand_seed_nodes()
+
+        except Exception as e:
+            print("Auto seed error:", e)
+
+        time.sleep(30)
+
+
+# ==================================================
+# API: GET PEERS
+# ==================================================
+@app.route("/peers", methods=["GET"])
+def get_peers():
+    return jsonify({
+        "count": len(p2p_peers),
+        "peers": list(p2p_peers)
+    })
+
+@app.route("/add_peer/<peer>")
+def add_peer(peer):
+    try:
+        ip, port = peer.split(":")
+        port = int(port)
+
+        if port not in ALLOWED_PORTS:
+            return {"error": "invalid port"}
+
+        clean_peer = f"{ip}:{port}"
+
+        if clean_peer not in p2p_peers:
+            p2p_peers.add(clean_peer)
+            peer_scores[clean_peer] = 0
+
+        return {
+            "status": "peer added",
+            "peer": clean_peer,
+            "total": len(p2p_peers)
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ==================================================
+# NETWORK INFO
+# ==================================================
+NETWORK_NAME = "SomCoin"
+CREATOR = "Zakariya Adan"
+CREATED_YEAR = "2026"
+
+BLOCKCHAIN_FILE = "blockchain.json"
+MEMPOOL_FILE = "mempool.json"
+PEERS_FILE = "peers.json"
+
+blockchain = []
+pending_transactions = []
+
+
+# ==================================================
+# UTXO SET
+# ==================================================
+
+utxo_set = {}
+
+blockchain_lock = threading.Lock()
+
+
+# ==================================================
+# STORAGE
+# ==================================================
+def save_data():
+    try:
+        # ensure file exists
+        if not os.path.exists(BLOCKCHAIN_FILE):
+            with open(BLOCKCHAIN_FILE, "w") as f:
+                json.dump([], f)
+
+        tmp = BLOCKCHAIN_FILE + ".tmp"
+
+        with open(tmp, "w") as f:
+            json.dump(blockchain, f)
+
+        os.replace(tmp, BLOCKCHAIN_FILE)
+
+    except Exception as e:
+        print("Blockchain save error:", e)
+
+# ==================================================
+# LOAD DATA
+# ==================================================
+def load_data():
+
+    global blockchain, pending_transactions, p2p_peers
+
+    blockchain = []
+    pending_transactions = []
+    p2p_peers = set()
+
+    # ==============================
+    # LOAD BLOCKCHAIN
+    # ==============================
+    if os.path.exists(BLOCKCHAIN_FILE):
+        try:
+
+            with open(BLOCKCHAIN_FILE, "r") as f:
+                data = json.load(f)
+
+            if isinstance(data, list) and len(data) > 0:
+                blockchain = data
+                print("Blockchain loaded:", len(blockchain), "blocks")
+
+            else:
+                print("Blockchain file empty")
+
+        except Exception as e:
+
+            print("Blockchain load error:", e)
+
+            # ==============================
+            # AUTO RECOVERY
+            # ==============================
+            try:
+
+                with open(BLOCKCHAIN_FILE, "r") as f:
+                    raw = f.read()
+
+                cut = raw.rfind('},{"index":')
+
+                if cut != -1:
+
+                    fixed = raw[:cut] + "]"
+
+                    data = json.loads(fixed)
+
+                    if isinstance(data, list) and len(data) > 0:
+                        blockchain = data
+                        print("Recovered blocks:", len(blockchain))
+
+            except Exception as e2:
+                print("Recovery failed:", e2)
+
+    # ==============================
+    # LOAD MEMPOOL
+    # ==============================
+    if os.path.exists(MEMPOOL_FILE):
+        try:
+
+            with open(MEMPOOL_FILE) as f:
+
+                raw = f.read().strip()
+
+                if raw:
+                    pending_transactions = json.loads(raw)
+                else:
+                    pending_transactions = []
+
+        except Exception as e:
+
+            print("Mempool load error:", e)
+            pending_transactions = []
+
+    # ==============================
+    # LOAD PEERS
+    # ==============================
+    if os.path.exists(PEERS_FILE):
+        try:
+
+            with open(PEERS_FILE) as f:
+
+                raw = f.read().strip()
+
+                if raw:
+                    p2p_peers = set(json.loads(raw))
+                else:
+                    p2p_peers = set()
+
+        except Exception as e:
+
+            print("Peers load error:", e)
+            p2p_peers = set()
+
+    print("Peers loaded:", len(p2p_peers))
+
+
+# ==================================================
+# ECONOMICS
+# ==================================================
+TARGET_BLOCK_TIME = 60
+difficulty = 4
+TX_FEE = 0.01
+MAX_TX_PER_BLOCK = 50
+MAX_MEMPOOL = 1000
+
+initial_reward = 50
+halving_interval = 10000000
+MIN_REWARD = 1
+max_supply = 21000000
+
+P2P_PORT = int(os.getenv("P2P_PORT", 9334))
+HTTP_PORT = int(os.getenv("PORT", 9443))
+
+# ==================================================
+# DIFFICULTY ADJUSTMENT
+# ==================================================
+
+DIFFICULTY_ADJUSTMENT_INTERVAL = 10
+MAX_DIFFICULTY = 4
+
+def adjust_difficulty():
+
+    global difficulty
+
+    # haddii blocks yar yihiin ha bedelin difficulty
+    if len(blockchain) < DIFFICULTY_ADJUSTMENT_INTERVAL:
+        return
+
+    last_block = blockchain[-1]
+    prev_block = blockchain[-DIFFICULTY_ADJUSTMENT_INTERVAL]
+
+    actual_time = last_block["timestamp"] - prev_block["timestamp"]
+    expected_time = TARGET_BLOCK_TIME * DIFFICULTY_ADJUSTMENT_INTERVAL
+
+    # haddii blocks degdeg ku yimaadaan → difficulty kordhi
+    if actual_time < expected_time / 2:
+
+        difficulty += 1
+
+        if difficulty > MAX_DIFFICULTY:
+            difficulty = MAX_DIFFICULTY
+
+        print("Difficulty increased:", difficulty)
+
+    # haddii blocks gaabis noqdaan → difficulty dhimi
+    elif actual_time > expected_time * 2:
+
+        if difficulty > 1:
+            difficulty -= 1
+
+        print("Difficulty decreased:", difficulty)
+# ==================================================
+# HASH
+# ==================================================
+def calculate_hash(index, prev_hash, timestamp, nonce, tx_str):
+
+    data = f"{index}{prev_hash}{timestamp}{nonce}{tx_str}".encode()
+
+    return hashlib.sha256(data).hexdigest()
+
+# ==================================================
+# BUILD BLOCK HEADER
+# ==================================================
+def build_header(index, prev_hash, timestamp, tx_str):
+    header = f"{index}{prev_hash}{timestamp}{tx_str}"
+    return header.encode()
+# ==================================================
+# MINER WORKER
+# ==================================================
+def mine_worker(start, step, index, prev_hash, txs, difficulty):
+
+    nonce = start
+
+    # timestamp hal mar
+    timestamp = time.time()
+
+    # json hal mar
+    tx_str = json.dumps(txs, sort_keys=True)
+
+    while True:
+
+        h = calculate_hash(
+            index,
+            prev_hash,
+            timestamp,
+            nonce,
+            tx_str
+        )
+
+        if h.startswith("0" * difficulty):
+            return nonce, timestamp, h
+
+        nonce += step
+
+
+# ==================================================
+# MULTI CPU MINER
+# ==================================================
+def mine_block(index, prev_hash, block_txs, difficulty):
+
+    cpu = multiprocessing.cpu_count()
+
+    with multiprocessing.Pool(cpu) as pool:
+
+        jobs = []
+
+        for i in range(cpu):
+
+            job = pool.apply_async(
+                mine_worker,
+                (i, cpu, index, prev_hash, block_txs, difficulty)
+            )
+
+            jobs.append(job)
+
+        while True:
+
+            for job in jobs:
+
+                if job.ready():
+
+                    nonce, ts, h = job.get()
+
+                    pool.terminate()
+                    pool.join()
+
+                    return nonce, ts, h
+
+            time.sleep(0.01)
+
+
+# ==================================================
+# GENESIS (LOCKED)
+# ==================================================
+def create_genesis():
+
+    global blockchain
+
+    # haddii blockchain file hore u jiro → ha samayn genesis
+    if os.path.exists(BLOCKCHAIN_FILE):
+        try:
+            with open(BLOCKCHAIN_FILE) as f:
+                data = json.load(f)
+
+            if isinstance(data, list) and len(data) > 0:
+                blockchain = data
+                print("Existing blockchain detected — genesis skipped")
+                return
+
+        except:
+            pass
+
+    # haddii chain ma jiro → samee genesis
+    genesis = {
+        "index": 0,
+        "timestamp": 1700000000,
+        "transactions": [],
+        "nonce": 0,
+        "previous_hash": "0",
+        "difficulty": difficulty
+    }
+
+    # HASH GENESIS
+    genesis["hash"] = calculate_hash(
+        genesis["index"],
+        genesis["previous_hash"],
+        genesis["timestamp"],
+        genesis["nonce"],
+        genesis["transactions"]
+    )
+
+    blockchain.append(genesis)
+
+    save_data()
+
+    print("Genesis block created")
+# ==================================================
+# REBUILD UTXO SET
+# ==================================================
+def rebuild_utxo():
+
+    global utxo_set
+
+    utxo_set = {}
+
+    for block in blockchain:
+
+        for tx in block["transactions"]:
+
+            txid = hashlib.sha256(
+                json.dumps(tx, sort_keys=True).encode()
+            ).hexdigest()
+
+            for inp in tx.get("inputs", []):
+                key = f'{inp["txid"]}:{inp["index"]}'
+                if key in utxo_set:
+                    del utxo_set[key]
+
+            for i, out in enumerate(tx.get("outputs", [])):
+
+                key = f"{txid}:{i}"
+
+                utxo_set[key] = {
+                    "address": out["address"],
+                    "amount": out["amount"]
+                }
+
+# =========================
+# TX HASH
+# =========================
+def tx_hash(tx):
+    data = json.dumps(tx, sort_keys=True).encode()
+    return hashlib.sha256(hashlib.sha256(data).digest()).hexdigest()
+
+
+# ==================================================
+# UPDATE UTXO (FINAL PRO)
+# ==================================================
+def update_utxo(block):
+
+    global utxo_set
+
+    for tx in block["transactions"]:
+
+        # 🔒 SKIP INVALID TX
+        if not verify_tx(tx):
+            print("❌ Skipping invalid tx in UTXO")
+            continue
+
+        txid = tx_hash(tx)
+
+        # =========================
+        # REMOVE INPUTS (SPENT)
+        # =========================
+        if tx.get("sender") != "NETWORK":
+
+            for inp in tx.get("inputs", []):
+                key = f'{inp["txid"]}:{inp["index"]}'
+
+                if key in utxo_set:
+                    del utxo_set[key]
+
+        # =========================
+        # ADD OUTPUTS (NEW UTXO)
+        # =========================
+        for index, out in enumerate(tx.get("outputs", [])):
+
+            # 🔒 CHECK AMOUNT
+            if out.get("amount", 0) <= 0:
+                continue
+
+            utxo_set[f"{txid}:{index}"] = {
+                "address": out.get("address"),
+                "amount": round(out.get("amount"), 8)
+            }
+
+
+# ==================================================
+# SAFE UPDATE (ANTI-CRASH)
+# ==================================================
+def safe_update_utxo(block):
+
+    try:
+        update_utxo(block)
+
+    except Exception as e:
+        print("⚠️ UTXO error → rebuilding:", e)
+        rebuild_utxo()
+
+
+# ==================================================
+# SIGN TRANSACTION
+# ==================================================
+import hashlib
+from ecdsa import SigningKey, SECP256k1
+
+def sign_transaction(tx, private_key_hex):
+
+    # remove signature haddii uu jiro
+    tx_copy = dict(tx)
+    tx_copy.pop("signature", None)
+
+    message = json.dumps(tx_copy, sort_keys=True).encode()
+    h = hashlib.sha256(message).digest()
+
+    sk = SigningKey.from_string(bytes.fromhex(private_key_hex), curve=SECP256k1)
+    signature = sk.sign(h).hex()
+
+    return signature
+
+
+# ==================================================
+# VERIFY SIGNATURE
+# ==================================================
+from ecdsa import VerifyingKey, SECP256k1, BadSignatureError
+
+def verify_transaction(tx):
+
+    try:
+        signature = tx.get("signature")
+        public_key_hex = tx.get("public_key")
+
+        if not signature or not public_key_hex:
+            return False
+
+        tx_copy = dict(tx)
+        tx_copy.pop("signature", None)
+
+        message = json.dumps(tx_copy, sort_keys=True).encode()
+        h = hashlib.sha256(message).digest()
+
+        vk = VerifyingKey.from_string(bytes.fromhex(public_key_hex), curve=SECP256k1)
+
+        return vk.verify(bytes.fromhex(signature), h)
+
+    except BadSignatureError:
+        return False
+    except Exception as e:
+        print("Verify error:", e)
+        return False
+
+
+# ==================================================
+# VERIFY NODE (ANTI-FAKE)
+# ==================================================
+from ecdsa import VerifyingKey, SECP256k1, BadSignatureError
+import hashlib
+
+def verify_node(node_id, public_key, signature):
+    try:
+        if not node_id or not public_key or not signature:
+            return False
+
+        if len(node_id) != 64:
+            return False
+
+        pk_bytes = bytes.fromhex(public_key)
+
+        if len(pk_bytes) not in (64, 65):
+            return False
+
+        vk = VerifyingKey.from_string(pk_bytes, curve=SECP256k1)
+
+        h = hashlib.sha256(node_id.encode()).digest()
+
+        return vk.verify(bytes.fromhex(signature), h)
+
+    except BadSignatureError:
+        return False
+    except Exception as e:
+        print("Node verify error:", e)
+        return False
+
+
+# ==================================================
+# CHECK DOUBLE SPEND (MEMPOOL)
+# ==================================================
+def is_utxo_spent_in_mempool(txid, index):
+
+    for tx in pending_transactions:
+        for inp in tx.get("inputs", []):
+            if inp["txid"] == txid and inp["index"] == index:
+                return True
+
+    return False
+# ==================================================
+# AUTO CLEAN MEMPOOL (ANTI-SPAM 🔥)
+# ==================================================
+def clean_mempool():
+    global pending_transactions
+
+    cleaned = []
+    used_inputs = set()
+    now = time.time()
+
+    for tx in pending_transactions:
+        try:
+            # ❌ remove invalid tx
+            if not verify_tx(tx):
+                continue
+
+            # ❌ remove old tx (10 min)
+            if now - tx.get("timestamp", now) > 600:
+                continue
+
+            # ❌ prevent double spend gudaha mempool
+            valid = True
+            for inp in tx.get("inputs", []):
+                key = f'{inp["txid"]}:{inp["index"]}'
+
+                if key in used_inputs:
+                    valid = False
+                    break
+
+                used_inputs.add(key)
+
+            if not valid:
+                continue
+
+            cleaned.append(tx)
+
+        except:
+            continue
+
+    # 🔥 LIMIT SIZE (ANTI-SPAM)
+    cleaned = sorted(cleaned, key=lambda x: x.get("fee", 0), reverse=True)
+    pending_transactions = cleaned[:MAX_MEMPOOL]
+
+
+# ==================================================
+# CREATE TRANSACTION (UTXO) FINAL (FIXED)
+# ==================================================
+def create_transaction(sender, receiver, amount, fee=0.001):
+
+    # 🔒 VALIDATE INPUT
+    if not sender or not receiver:
+        return None, "Invalid address"
+
+    try:
+        amount = float(amount)
+    except:
+        return None, "Invalid amount format"
+
+    if amount <= 0:
+        return None, "Amount must be > 0"
+
+    # 🔒 CHECK BALANCE (pending included)
+    if balance_with_pending(sender) < amount + fee:
+        return None, "Insufficient (including pending)"
+
+    inputs = []
+    total = 0
+
+    # 🔥 SORT UTXOs (small → big, better selection)
+    user_utxos = []
+
+    for key, utxo in utxo_set.items():
+        if utxo["address"] == sender:
+            user_utxos.append((key, utxo))
+
+    user_utxos.sort(key=lambda x: x[1]["amount"])
+
+    # =========================
+    # SELECT INPUTS
+    # =========================
+    for key, utxo in user_utxos:
+
+        txid, index = key.split(":")
+        index = int(index)
+
+        # 🚫 SKIP haddii mempool ku jiro
+        if is_utxo_spent_in_mempool(txid, index):
+            continue
+
+        inputs.append({
+            "txid": txid,
+            "index": index
+        })
+
+        total += utxo["amount"]
+
+        if total >= amount + fee:
+            break
+
+    # ❌ haddii lacag ku filan la waayo
+    if total < amount + fee:
+        return None, "Insufficient balance"
+
+    # =========================
+    # OUTPUTS
+    # =========================
+    outputs = []
+
+    # lacagta la dirayo
+    outputs.append({
+        "address": receiver,
+        "amount": round(amount, 8)
+    })
+
+    # change (haddii wax ka haro)
+    change = round(total - amount - fee, 8)
+
+    if change > 0.00000001:
+        outputs.append({
+            "address": sender,
+            "amount": change
+        })
+
+    # =========================
+    # FINAL TX
+    # =========================
+    tx = {
+        "sender": sender,
+        "inputs": inputs,
+        "outputs": outputs,
+        "fee": round(fee, 8),
+        "timestamp": time.time(),
+        "public_key": "",
+        "signature": ""
+    }
+
+    return tx, "OK"
+
+
+# ==================================================
+# BALANCE (UTXO BASED)
+# ==================================================
+def balance(addr):
+
+    bal = 0
+
+    for utxo in utxo_set.values():
+        if utxo["address"] == addr:
+            bal += utxo["amount"]
+
+    return round(bal, 8)
+
+
+# ==================================================
+# BALANCE WITH PENDING (MEMPOOL AWARE)
+# ==================================================
+def balance_with_pending(addr):
+
+    bal = balance(addr)
+
+    for tx in pending_transactions:
+
+        # haddii sender yahay → subtract
+        for inp in tx.get("inputs", []):
+            key = f'{inp["txid"]}:{inp["index"]}'
+            utxo = utxo_set.get(key)
+
+            if utxo and utxo["address"] == addr:
+                bal -= utxo["amount"]
+
+        # haddii receiver yahay → add
+        for out in tx.get("outputs", []):
+            if out["address"] == addr:
+                bal += out["amount"]
+
+    return round(bal, 8)
+
+
+# ==================================================
+# NEW WALLET
+# ==================================================
+@app.route("/wallet/new")
+def new_wallet():
+    from ecdsa import SigningKey, SECP256k1
+    import hashlib
+
+    sk = SigningKey.generate(curve=SECP256k1)
+    vk = sk.get_verifying_key()
+
+    private_key = sk.to_string().hex()
+    public_key = vk.to_string().hex()
+
+    address = "SOM" + hashlib.sha256(public_key.encode()).hexdigest()[:40]
+
+    return jsonify({
+        "private_key": private_key,
+        "public_key": public_key,
+        "address": address
+    })
+
+
+# =========================
+# GET UTXOS
+# =========================
+@app.route("/utxos/<address>")
+def get_utxos(address):
+    result = []
+
+    for key, utxo in utxo_set.items():
+        if utxo["address"] == address:
+            txid, index = key.split(":")
+            result.append({
+                "txid": txid,
+                "index": int(index),
+                "amount": utxo["amount"]
+            })
+
+    return jsonify({"utxos": result})
+
+
+# ==================================================
+# SEND TRANSACTION (SECURE)
+# ==================================================
+# 🔒 MINIMUM FEE (BASELINE)
+MIN_TX_FEE = 0.001
+
+
+@app.route("/send", methods=["POST"])
+def send():
+
+    data = request.json
+
+    sender = data.get("from")
+    receiver = data.get("to")
+
+    # =========================
+    # AMOUNT VALIDATION
+    # =========================
+    try:
+        amount = float(data.get("amount", 0))
+    except:
+        return jsonify({"error": "invalid amount"}), 400
+
+    if amount <= 0:
+        return jsonify({"error": "invalid amount"}), 400
+
+    # =========================
+    # 🔥 FEE SYSTEM (HYBRID)
+    # =========================
+    try:
+        fee = float(data.get("fee", get_recommended_fee()))
+    except:
+        fee = get_recommended_fee()
+
+    # 🔒 enforce minimum fee
+    if fee < MIN_TX_FEE:
+        return jsonify({
+            "error": "fee too low",
+            "minimum_fee": MIN_TX_FEE
+        }), 400
+
+    # =========================
+    # REQUIRED FIELDS
+    # =========================
+    signature = data.get("signature")
+    public_key = data.get("public_key")
+
+    if not sender or not receiver or not signature or not public_key:
+        return jsonify({"error": "missing fields"}), 400
+
+    # =========================
+    # CREATE TX
+    # =========================
+    tx, status = create_transaction(sender, receiver, amount, fee)
+
+    if not tx:
+        return jsonify({"error": status}), 400
+
+    tx["public_key"] = public_key
+    tx["signature"] = signature
+
+    # =========================
+    # VERIFY SIGNATURE
+    # =========================
+    if not verify_transaction(tx):
+        return jsonify({"error": "Invalid signature"}), 400
+
+    # =========================
+    # ADD TO MEMPOOL
+    # =========================
+    pending_transactions.append(tx)
+
+    return jsonify({
+        "status": "transaction added",
+        "fee": fee,
+        "recommended_fee": get_recommended_fee(),
+        "mempool_size": len(pending_transactions),
+        "tx": tx
+    })
+
+# ==================================================
+# TOTAL SUPPLY
+# ==================================================
+def total_supply():
+
+    total = 0.0
+
+    for block in blockchain:
+
+        for tx in block.get("transactions", []):
+
+            # only count minted coins
+            if tx.get("sender") == "NETWORK":
+
+                for out in tx.get("outputs", []):
+
+                    amount = out.get("amount", 0)
+
+                    # 🔒 skip invalid values
+                    if amount <= 0:
+                        continue
+
+                    total += float(amount)
+
+    return round(total, 8)
+
+# ==================================================
+# ⚡ HASHRATE CALCULATION (ADD THIS 🔥)
+# ==================================================
+def calculate_hashrate():
+    if len(blockchain) < 10:
+        return 0
+
+    last = blockchain[-1]
+    prev = blockchain[-10]
+
+    time_taken = last["timestamp"] - prev["timestamp"]
+
+    if time_taken == 0:
+        return 0
+
+    return round((10 / time_taken) * (2 ** last.get("difficulty", 1)), 2)
+
+def get_recommended_fee():
+    if len(pending_transactions) < 10:
+        return 0.001
+    elif len(pending_transactions) < 50:
+        return 0.005
+    else:
+        return 0.01
+
+# ==================================================
+# BLOCK REWARD (HALVING + MAX SUPPLY)
+# ==================================================
+def block_reward():
+
+    # halving calculation
+    halv = len(blockchain) // halving_interval
+    reward = initial_reward / (2 ** halv)
+
+    if reward < MIN_REWARD:
+        reward = MIN_REWARD
+
+    current_supply = total_supply()
+    remaining = max_supply - current_supply
+
+    # if max supply reached
+    if remaining <= 0:
+        return 0
+
+    # do not exceed supply cap
+    if reward > remaining:
+        reward = remaining
+
+    return reward
+
+
+# ==================================================
+# VERIFY TX (UTXO + SIGNATURE) - FINAL FIXED
+# ==================================================
+def verify_tx(tx, used_inputs=None):
+
+    try:
+
+        # track used inputs (prevent double spend gudaha block)
+        if used_inputs is None:
+            used_inputs = set()
+
+        # =========================
+        # COINBASE (REWARD)
+        # =========================
+        if tx.get("sender") == "NETWORK":
+            if tx.get("inputs"):
+                return False
+            return True
+
+        # =========================
+        # BASIC CHECK
+        # =========================
+        if "inputs" not in tx or "outputs" not in tx:
+            return False
+
+        if not tx["inputs"] or not tx["outputs"]:
+            return False
+
+        if "public_key" not in tx or "signature" not in tx:
+            return False
+
+        if "sender" not in tx:
+            return False
+
+        # =========================
+        # SIGNATURE VERIFY (HEX FIX)
+        # =========================
+        try:
+            public_key_hex = tx.get("public_key")
+            signature_hex = tx.get("signature")
+
+            # remove signature before hashing
+            tx_copy = dict(tx)
+            tx_copy.pop("signature", None)
+
+            message = json.dumps(tx_copy, sort_keys=True).encode()
+            h = hashlib.sha256(message).digest()
+
+            vk = VerifyingKey.from_string(
+                bytes.fromhex(public_key_hex),
+                curve=SECP256k1
+            )
+
+            if not vk.verify(bytes.fromhex(signature_hex), h):
+                return False
+
+        except Exception as e:
+            print("Verify error:", e)
+            return False
+
+        # =========================
+        # UTXO CHECK
+        # =========================
+        input_sum = 0
+        output_sum = 0
+
+        for inp in tx["inputs"]:
+
+            if "txid" not in inp or "index" not in inp:
+                return False
+
+            key = f'{inp["txid"]}:{inp["index"]}'
+
+            # 🚫 DOUBLE SPEND gudaha block
+            if key in used_inputs:
+                return False
+
+            utxo = utxo_set.get(key)
+
+            if not utxo:
+                return False
+
+            # check owner
+            if utxo["address"] != tx["sender"]:
+                return False
+
+            input_sum += utxo["amount"]
+            used_inputs.add(key)
+
+        # =========================
+        # OUTPUT CHECK
+        # =========================
+        for out in tx["outputs"]:
+
+            if "address" not in out or "amount" not in out:
+                return False
+
+            if out["amount"] <= 0:
+                return False
+
+            output_sum += out["amount"]
+
+        # =========================
+        # PREVENT OVERSPEND
+        # =========================
+        if output_sum > input_sum:
+            return False
+
+        # fee
+        tx["fee"] = round(input_sum - output_sum, 8)
+
+        return True
+
+    except Exception as e:
+        print("TX verify fatal error:", e)
+        return False
+
+
+# ==================================================
+# BLOCK VALIDATION
+# ==================================================
+def validate_block(b, chain_ref):
+
+    if b["index"] != len(chain_ref):
+        return False
+
+    if b["previous_hash"] != chain_ref[-1]["hash"]:
+        return False
+
+    # same tx encoding as miner
+    tx_str = json.dumps(b["transactions"], sort_keys=True)
+
+    h = calculate_hash(
+        b["index"],
+        b["previous_hash"],
+        b["timestamp"],
+        b["nonce"],
+        tx_str
+    )
+
+    if h != b["hash"]:
+        return False
+
+    # difficulty check
+    if not h.startswith("0" * b["difficulty"]):
+        return False
+
+    for tx in b["transactions"]:
+        if not verify_tx(tx):
+            return False
+
+    return True
+
+# =========================
+# 🔥 CHAIN WORK (BITCOIN STYLE)
+# =========================
+def chain_work(chain):
+    work = 0
+
+    for b in chain:
+        diff = b.get("difficulty", 1)
+        work += 2 ** (diff * 4)
+
+    return work
+
+# =========================
+# 🔒 FULL CHAIN VALIDATION
+# =========================
+def is_valid_full_chain(chain):
+    try:
+        # =========================
+        # BASIC CHECK
+        # =========================
+        if not isinstance(chain, list) or len(chain) == 0:
+            return False
+
+        # =========================
+        # GENESIS CHECK 🔥
+        # =========================
+        genesis = chain[0]
+
+        if genesis.get("index") != 0:
+            return False
+
+        if genesis.get("previous_hash") != "0":
+            return False
+
+        # =========================
+        # LOOP BLOCKS
+        # =========================
+        for i in range(1, len(chain)):
+
+            b = chain[i]
+            prev = chain[i - 1]
+
+            # =========================
+            # INDEX CHECK 🔢
+            # =========================
+            if b.get("index") != prev.get("index") + 1:
+                return False
+
+            # =========================
+            # LINK CHECK 🔗
+            # =========================
+            if b.get("previous_hash") != prev.get("hash"):
+                return False
+
+            # =========================
+            # HASH CHECK 🔐
+            # =========================
+            try:
+                tx_str = json.dumps(b.get("transactions", []), sort_keys=True)
+            except:
+                return False
+
+            h = calculate_hash(
+                b.get("index"),
+                b.get("previous_hash"),
+                b.get("timestamp"),
+                b.get("nonce"),
+                tx_str
+            )
+
+            if h != b.get("hash"):
+                return False
+
+            # =========================
+            # DIFFICULTY CHECK ⛏
+            # =========================
+            if not h.startswith("0" * b.get("difficulty", 1)):
+                return False
+
+            # =========================
+            # TX VALIDATION + DOUBLE SPEND 🔥
+            # =========================
+            used_inputs = set()
+
+            for tx in b.get("transactions", []):
+                if not verify_tx(tx, used_inputs):
+                    return False
+
+        return True
+
+    except Exception as e:
+        print("❌ Chain validation error:", e)
+        return False
+
+# =========================
+# 🚀 REPLACE CHAIN (PRO VERSION)
+# =========================
+def replace_chain(new_chain):
+
+    global blockchain
+
+    if not isinstance(new_chain, list) or len(new_chain) == 0:
+        return
+
+    if not is_valid_full_chain(new_chain):
+        print("❌ Invalid chain rejected")
+        return
+
+    # =========================
+    # 🔥 WORK COMPARISON
+    # =========================
+    local_work = chain_work(blockchain)
+    new_work = chain_work(new_chain)
+
+    print(f"⚖️ Work compare → local:{local_work} | new:{new_work}")
+
+    # =========================
+    # ✅ REPLACE ONLY IF STRONGER
+    # =========================
+    if new_work > local_work:
+        print("🔥 Replacing with stronger chain")
+
+        blockchain = new_chain
+        rebuild_utxo()
+        save_data()
+
+        print("✅ Chain replaced:", len(blockchain))
+    else:
+        print("ℹ️ Ignored weaker chain")
+
+# ==================================================
+# REQUEST PEERS (FINAL SECURE)
+# ==================================================
+def request_peers():
+    global p2p_peers
+
+    for peer in list(p2p_peers):
+        try:
+            host, port = peer.split(":")
+            port = int(port)
+
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(3)
+
+            s.connect((host, port))
+
+            s.sendall((json.dumps({
+                "type": "get_peers"
+            }) + "\n").encode())
+
+            data = s.recv(8192)
+
+            if not data:
+                continue
+
+            try:
+                resp = json.loads(data.decode())
+
+                if resp.get("type") == "peers":
+
+                    new_peers = resp.get("data", [])
+                    seen_ips = set()
+
+                    for p in new_peers:
+                        try:
+                            ip, prt = p.split(":")
+                            prt = int(prt)
+
+                            # ✅ only allowed port
+                            if prt not in ALLOWED_PORTS:
+                                continue
+
+                            # 🚫 skip duplicates
+                            if ip in seen_ips or ip in peer_ips:
+                                continue
+
+                            seen_ips.add(ip)
+
+                            peer_addr = f"{ip}:{prt}"
+
+                            if len(p2p_peers) < MAX_PEERS:
+                                p2p_peers.add(peer_addr)
+                                peer_ips.add(ip)
+
+                                print("🌐 Peer discovered:", peer_addr)
+
+                        except:
+                            continue
+
+            except:
+                pass
+
+            s.close()
+
+        except:
+            continue
+
+# ==================================================
+# SAFE MULTI MESSAGE HANDLER
+# ==================================================
+def safe_handle(data, conn):
+    messages = data.split("\n")
+
+    for msg in messages:
+        if msg.strip():
+            handle_msg(msg, conn)
+
+def send_msg(conn, data):
+    try:
+        if not isinstance(data, dict):
+            return
+        msg = json.dumps(data) + "\n"
+        conn.sendall(msg.encode())
+    except Exception as e:
+        pass
+
+# ==================================================
+# HANDLE P2P MESSAGE (ULTRA PRO + SAFE + P2P SYNC)
+# ==================================================
+def handle_msg(msg, conn):
+
+    global blockchain, p2p_peers, pending_transactions
+
+    try:
+        # =========================================
+        # 🔒 HARD LIMIT
+        # =========================================
+        if isinstance(msg, str) and len(msg) > 100000:
+            return
+
+        # =========================================
+        # 🔥 SAFE PARSE
+        # =========================================
+        try:
+            data = json.loads(msg) if isinstance(msg, str) else msg
+        except:
+            return
+
+        if not isinstance(data, dict):
+            return
+
+        msg_type = data.get("type")
+
+        # =========================================
+        # 📢 INV
+        # =========================================
+        if msg_type == "inv":
+
+            for item in data.get("data", []):
+                typ = item.get("type")
+                item_id = item.get("id")
+
+                if not typ or not item_id:
+                    continue
+
+                if typ == "tx":
+                    if any(tx_hash(tx) == item_id for tx in pending_transactions):
+                        continue
+
+                elif typ == "block":
+                    if any(b["hash"] == item_id for b in blockchain):
+                        continue
+
+                send_msg(conn, {
+                    "type": "getdata",
+                    "data": [item]
+                })
+
+        # =========================================
+        # 📥 GETDATA
+        # =========================================
+        elif msg_type == "getdata":
+
+            for item in data.get("data", []):
+                typ = item.get("type")
+                item_id = item.get("id")
+
+                if typ == "tx":
+                    for tx in pending_transactions:
+                        if tx_hash(tx) == item_id:
+                            send_msg(conn, {"type": "tx", "data": tx})
+
+                elif typ == "block":
+                    for b in blockchain:
+                        if b["hash"] == item_id:
+                            send_msg(conn, {"type": "block", "data": b})
+
+        # =========================================
+        # 💸 TX
+        # =========================================
+        elif msg_type == "tx":
+
+            tx = data.get("data")
+            if not isinstance(tx, dict):
+                return
+
+            with mempool_lock:
+                if any(tx_hash(t) == tx_hash(tx) for t in pending_transactions):
+                    return
+
+                if not verify_tx(tx):
+                    return
+
+                pending_transactions.append(tx)
+
+            print("💸 TX accepted")
+
+            # INV
+            p2p_broadcast({
+                "type": "inv",
+                "data": [{"type": "tx", "id": tx_hash(tx)}]
+            })
+
+            # 🔥 DIRECT FALLBACK
+            p2p_broadcast({
+                "type": "tx",
+                "data": tx
+            })
+
+        # =========================================
+        # 📦 BLOCK
+        # =========================================
+        elif msg_type == "block":
+
+            block = data.get("data")
+            if not isinstance(block, dict):
+                return
+
+            if any(b["hash"] == block.get("hash") for b in blockchain):
+                return
+
+            if blockchain and block.get("previous_hash") != blockchain[-1]["hash"]:
+                print("⚠️ Orphan block")
+                request_chain()
+                return
+
+            try:
+                tx_str = json.dumps(block["transactions"], sort_keys=True)
+            except:
+                return
+
+            calc_hash = calculate_hash(
+                block["index"],
+                block["previous_hash"],
+                block["timestamp"],
+                block["nonce"],
+                tx_str
+            )
+
+            if calc_hash != block.get("hash"):
+                return
+
+            if not calc_hash.startswith("0" * block.get("difficulty", 1)):
+                return
+
+            used_inputs = set()
+            for tx in block.get("transactions", []):
+                if not verify_tx(tx, used_inputs):
+                    return
+
+            with blockchain_lock:
+                blockchain.append(block)
+                update_utxo(block)
+
+            save_data()
+            print("✅ Block accepted:", block["index"])
+
+            # INV
+            p2p_broadcast({
+                "type": "inv",
+                "data": [{"type": "block", "id": block["hash"]}]
+            })
+
+            # 🔥 DIRECT FALLBACK
+            p2p_broadcast({
+                "type": "block",
+                "data": block
+            })
+
+        # =========================================
+        # 🔄 GET CHAIN
+        # =========================================
+        elif msg_type == "get_chain":
+
+            send_msg(conn, {
+                "type": "chain",
+                "data": blockchain
+            })
+
+        # =========================================
+        # 🔄 CHAIN RESPONSE
+        # =========================================
+        elif msg_type == "chain":
+
+            new_chain = data.get("data")
+            if not isinstance(new_chain, list):
+                return
+
+            valid = True
+
+            for i in range(1, len(new_chain)):
+                prev = new_chain[i-1]
+                curr = new_chain[i]
+
+                if curr.get("previous_hash") != prev.get("hash"):
+                    valid = False
+                    break
+
+                try:
+                    tx_str = json.dumps(curr["transactions"], sort_keys=True)
+                except:
+                    valid = False
+                    break
+
+                calc_hash = calculate_hash(
+                    curr["index"],
+                    curr["previous_hash"],
+                    curr["timestamp"],
+                    curr["nonce"],
+                    tx_str
+                )
+
+                if calc_hash != curr.get("hash"):
+                    valid = False
+                    break
+
+            if valid and len(new_chain) > len(blockchain):
+                print("🔄 Chain replaced")
+
+                with blockchain_lock:
+                    blockchain.clear()
+                    blockchain.extend(new_chain)
+
+                rebuild_utxo()
+                save_data()
+
+        # =========================================
+        # 🤝 HELLO
+        # =========================================
+        elif msg_type == "hello":
+
+            port = data.get("port")
+            node_id = data.get("node_id")
+            public_key = data.get("public_key")
+            signature = data.get("signature")
+
+            if not verify_node(node_id, public_key, signature):
+                return
+
+            try:
+                port = int(port)
+            except:
+                return
+
+            if port not in ALLOWED_PORTS:
+                return
+
+            ip = conn.getpeername()[0]
+
+            # ❌ SELF BLOCK
+            SERVER_IP = "0.0.0.0"
+
+            if ip.startswith("127.") or ip.startswith("0.") or ip in banned_ips:
+                return
+
+            # ❌ MULTI CONNECTION LIMIT
+            same_ip = [p for p in p2p_peers if p.startswith(ip + ":")]
+            if len(same_ip) >= MAX_CONNECTIONS_PER_IP:
+                return
+
+            if ip in peer_id_map and peer_id_map[ip] != node_id:
+                banned_ips.add(ip)
+                return
+
+            peer_id_map[ip] = node_id
+
+            peer = f"{ip}:{port}"
+
+            if ip not in peer_ips and len(p2p_peers) < MAX_PEERS:
+                p2p_peers.add(peer)
+                peer_ips.add(ip)
+                peer_scores[peer] = 0
+                mark_peer_alive(peer)
+
+                save_data()
+
+                print("✅ Peer:", peer)
+
+            # reply hello
+            send_msg(conn, {
+                "type": "hello",
+                "node_id": NODE_ID,
+                "port": P2P_PORT,
+                "public_key": NODE_PUBLIC_KEY,
+                "signature": sign_message(NODE_ID)
+            })
+
+            # 🔥 AUTO SHARE PEERS
+            send_msg(conn, {
+                "type": "peers",
+                "data": list(p2p_peers)
+            })
+
+            # 🔥 REQUEST MORE
+            send_msg(conn, {"type": "get_peers"})
+
+        # =========================================
+        # 🌐 GET PEERS
+        # =========================================
+        elif msg_type == "get_peers":
+
+            send_msg(conn, {
+                "type": "peers",
+                "data": list(p2p_peers)
+            })
+
+        # =========================================
+        # 🌐 PEERS
+        # =========================================
+        elif msg_type == "peers":
+
+            for p in data.get("data", []):
+                try:
+                    ip, port = p.split(":")
+                    port = int(port)
+
+                    if (
+                        ip.startswith("127.")
+                        or ip.startswith("0.")
+                        or ip in banned_ips
+                        or port not in ALLOWED_PORTS
+                        or ip in peer_ips
+                    ):
+                        continue
+
+                    if len(p2p_peers) < MAX_PEERS:
+                        peer = f"{ip}:{port}"
+                        p2p_peers.add(peer)
+                        peer_ips.add(ip)
+                        peer_scores[peer] = 0
+
+                except:
+                    continue
+
+        # =========================================
+        # ❤️ PING / PONG
+        # =========================================
+        elif msg_type == "ping":
+            send_msg(conn, {"type": "pong"})
+
+        elif msg_type == "pong":
+            peer = f"{conn.getpeername()[0]}:{P2P_PORT}"
+            mark_peer_alive(peer)
+
+    except Exception as e:
+        print("P2P error:", e)
+
+
+# ==================================================
+# REQUEST CHAIN
+# ==================================================
+def request_chain():
+
+    for peer in list(p2p_peers):
+
+        try:
+            ip, port = peer.split(":")
+            port = int(port)
+
+            s = socket.socket()
+            s.settimeout(5)
+
+            s.connect((ip, port))
+
+            s.sendall((json.dumps({
+                "type": "get_chain"
+            }) + "\n").encode())
+
+            data = s.recv(100000)  # 🔥 muhiim
+
+            if data:
+                safe_handle(data.decode(), s)
+
+            s.close()
+
+        except:
+            pass
+
+def fast_sync():
+    while True:
+        try:
+            best = sorted(
+                p2p_peers,
+                key=lambda p: peer_scores.get(p, 0),
+                reverse=True
+            )[:5]
+
+            for peer in best:
+                try:
+                    ip, port = peer.split(":")
+                    s = socket.socket()
+                    s.settimeout(5)
+                    s.connect((ip, int(port)))
+
+                    s.sendall((json.dumps({
+                        "type": "get_chain"
+                    }) + "\n").encode())
+
+                    data = s.recv(200000)
+
+                    if data:
+                        safe_handle(data.decode(), s)
+                        reward_peer(peer)
+
+                    s.close()
+
+                except:
+                    punish_peer(peer)
+
+        except:
+            pass
+
+        time.sleep(10)
+
+# ==================================================
+# AUTO CONNECT (KEEP NETWORK ALIVE 🔥)
+# ==================================================
+def auto_connect():
+    while True:
+        for peer in SEED_NODES:
+            try:
+                ip, port = peer.split(":")
+                s = socket.socket()
+                s.settimeout(3)
+                s.connect((ip, int(port)))
+
+                s.sendall((json.dumps({
+                    "type": "hello",
+                    "port": P2P_PORT,
+                    "node_id": NODE_ID,
+                    "public_key": NODE_PUBLIC_KEY,
+                    "signature": sign_message(NODE_ID)
+                }) + "\n").encode())
+
+                s.close()
+            except:
+                pass
+
+        time.sleep(10)
+
+# =========================
+# PING PEERS (KEEP ALIVE 🔥)
+# =========================
+def ping_peers():
+    while True:
+        for peer in list(p2p_peers):
+            try:
+                ip, port = peer.split(":")
+                s = socket.socket()
+                s.settimeout(2)
+                s.connect((ip, int(port)))
+
+                s.sendall((json.dumps({"type": "ping"}) + "\n").encode())
+                s.close()
+
+                mark_peer_alive(peer)
+
+            except:
+                punish_peer(peer)
+
+        time.sleep(15)
+
+# =========================
+# AUTO CONNECT (NEW NODES JOIN 🔥)
+# =========================
+def auto_connect_new_nodes():
+    while True:
+        try:
+            for peer in list(p2p_peers):
+                ip, port = peer.split(":")
+                port = int(port)
+
+                s = socket.socket()
+                s.settimeout(3)
+
+                s.connect((ip, port))
+
+                s.sendall((json.dumps({
+                    "type": "hello",
+                    "port": P2P_PORT,
+                    "node_id": NODE_ID,
+                    "public_key": NODE_PUBLIC_KEY,
+                    "signature": sign_message(NODE_ID)
+                }) + "\n").encode())
+
+                s.close()
+
+        except:
+            pass
+
+        time.sleep(15)
+
+# =========================
+# AUTO MEMPOOL CLEAN
+# =========================
+def auto_clean_mempool():
+    while True:
+        try:
+            clean_mempool()
+        except Exception as e:
+            print("Mempool clean error:", e)
+
+        time.sleep(30)  # every 30 sec
+
+# ==================================================
+# NODE ID (PRO VERSION - CRYPTO IDENTITY)
+# ==================================================
+from ecdsa import SigningKey, SECP256k1
+import hashlib
+import os
+
+NODE_KEY_FILE = "node_key.pem"
+
+# =========================
+# GENERATE KEYS
+# =========================
+def generate_node_keys():
+    sk = SigningKey.generate(curve=SECP256k1)
+    vk = sk.get_verifying_key()
+
+    # 🔒 save private key securely
+    with open(NODE_KEY_FILE, "wb") as f:
+        f.write(sk.to_pem())
+
+    try:
+        os.chmod(NODE_KEY_FILE, 0o600)  # owner only
+    except:
+        pass
+
+    return sk, vk
+
+# =========================
+# LOAD KEYS
+# =========================
+def load_node_keys():
+    with open(NODE_KEY_FILE, "rb") as f:
+        sk = SigningKey.from_pem(f.read())
+
+    vk = sk.get_verifying_key()
+    return sk, vk
+
+# =========================
+# LOAD OR CREATE KEYS
+# =========================
+try:
+    if os.path.exists(NODE_KEY_FILE):
+        node_sk, node_vk = load_node_keys()
+    else:
+        node_sk, node_vk = generate_node_keys()
+except Exception as e:
+    print("⚠️ Key error → regenerating:", e)
+    node_sk, node_vk = generate_node_keys()
+
+# =========================
+# PUBLIC KEY
+# =========================
+NODE_PUBLIC_KEY = node_vk.to_string().hex()
+
+# =========================
+# NODE ID = HASH(PUBLIC KEY)
+# =========================
+NODE_ID = hashlib.sha256(
+    NODE_PUBLIC_KEY.encode()
+).hexdigest()
+
+# =========================
+# SIGN FUNCTION (IMPORTANT)
+# =========================
+def sign_message(message):
+    h = hashlib.sha256(message.encode()).digest()
+    return node_sk.sign(h).hex()
+
+# ==================================================
+# CONNECT TO SEED NODES (FINAL PRO VERSION)
+# ==================================================
+def connect_seed_nodes():
+
+    for seed in SEED_NODES:
+
+        try:
+            host, port = seed.split(":")
+            port = int(port)
+
+            # allow only valid ports
+            if port not in ALLOWED_PORTS:
+                continue
+
+            s = socket.socket()
+            s.settimeout(5)
+
+            s.connect((host, port))
+
+            # ✅ FULL SECURE HELLO (FIXED)
+            s.sendall((json.dumps({
+                "type": "hello",
+                "port": P2P_PORT,
+                "node_id": NODE_ID,
+                "public_key": NODE_PUBLIC_KEY,
+                "signature": sign_message(NODE_ID)
+            }) + "\n").encode())
+
+            # ✅ allow multiple ports per IP
+            peer = f"{host}:{port}"
+
+            if peer not in p2p_peers:
+                p2p_peers.add(peer)
+                peer_ips.add(host)
+
+            print("Connected to seed:", seed)
+            save_data()
+        except Exception as e:
+            print("Seed failed:", seed, "|", e)
+
+        finally:
+            try:
+                s.close()
+            except:
+                pass
+
+def random_bootstrap():
+    if not p2p_peers:
+        return  # ❗ avoid crash haddii peers jiro la'aan
+
+    for peer in random.sample(list(p2p_peers), min(5, len(p2p_peers))):
+        try:
+            ip, port = peer.split(":")
+            s = socket.socket()
+            s.settimeout(3)
+            s.connect((ip, int(port)))
+
+            s.sendall((json.dumps({
+                "type": "hello",
+                "port": P2P_PORT,
+                "node_id": NODE_ID,
+                "public_key": NODE_PUBLIC_KEY,
+                "signature": sign_message(NODE_ID)
+            }) + "\n").encode())
+
+            s.close()
+        except:
+            pass
+
+# ==================================================
+# P2P SERVER (FINAL PRO - ULTRA STABLE + SECURE)
+# ==================================================
+def p2p_server():
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    s.bind(("0.0.0.0", P2P_PORT))
+    s.listen(100)
+
+    print("📡 P2P server running on port", P2P_PORT)
+
+    while True:
+        conn, addr = s.accept()
+        peer_ip = addr[0]
+
+        # 🚫 BLOCK LOCALHOST / INVALID
+        if peer_ip.startswith("127.") or peer_ip == "0.0.0.0":
+            conn.close()
+            continue
+
+        # 🚫 BANNED IPS
+        if peer_ip in banned_ips:
+            conn.close()
+            continue
+
+        def client_thread(c, addr):
+            try:
+                c.settimeout(10)
+                buffer = ""
+
+                while True:
+                    data = c.recv(4096)
+
+                    if not data:
+                        break
+
+                    # 🔥 SAFE DECODE
+                    try:
+                        buffer += data.decode(errors="ignore")
+                    except:
+                        continue
+
+                    # 🔥 MULTI MESSAGE SAFE PARSER
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+
+                        if not line.strip():
+                            continue
+
+                        # 🔥 ANTI-BROKEN JSON
+                        if not line.startswith("{") or not line.endswith("}"):
+                            continue
+
+                        # 🔥 ANTI-SPAM (SIZE LIMIT)
+                        if len(line) > 100000:
+                            continue
+
+                        try:
+                            msg = json.loads(line)
+                            msg_type = msg.get("type")
+
+                            # 🔒 ALLOW ONLY VALID TYPES
+                            if msg_type not in [
+                                "hello",
+                                "tx",
+                                "block",
+                                "get_chain",
+                                "chain",
+                                "get_peers",
+                                "peers"
+                            ]:
+                                continue
+
+                            # 🔥 HANDLE MESSAGE
+                            handle_msg(msg, c)
+
+                        except:
+                            # 🔕 SILENT IGNORE (NO LOG SPAM)
+                            continue
+
+            except:
+                # 🔕 IGNORE CONNECTION ERRORS
+                pass
+
+            finally:
+                try:
+                    c.close()
+                except:
+                    pass
+
+        # 🔥 THREAD PER CONNECTION
+        threading.Thread(
+            target=client_thread,
+            args=(conn, addr),
+            daemon=True
+        ).start()
+
+# ==================================================
+# AUTO CHAIN SYNC
+# ==================================================
+def sync_chain():
+
+    while True:
+
+        try:
+            request_chain()
+        except:
+            pass
+
+        time.sleep(10)
+
+
+# ==================================================
+# ADDRESS INFO (BALANCE + UTXO + HISTORY)
+# ==================================================
+@app.route("/address/<wallet>")
+def address_info(wallet):
+
+    balance = 0
+    utxos = []
+    history = []
+
+    # =========================
+    # UTXO BALANCE
+    # =========================
+    for utxo_id, utxo in utxo_set.items():
+
+        if utxo["address"] == wallet:
+
+            balance += utxo["amount"]
+
+            utxos.append({
+                "utxo": utxo_id,
+                "amount": utxo["amount"]
+            })
+
+    # =========================
+    # TX HISTORY
+    # =========================
+    for block in blockchain:
+
+        for tx in block["transactions"]:
+
+            # received coins
+            for out in tx.get("outputs", []):
+                if out["address"] == wallet:
+
+                    history.append({
+                        "type": "receive",
+                        "amount": out["amount"],
+                        "block": block["index"]
+                    })
+
+            # sent coins
+            if tx.get("sender") == wallet:
+
+                for out in tx.get("outputs", []):
+                    history.append({
+                        "type": "send",
+                        "amount": out["amount"],
+                        "block": block["index"]
+                    })
+
+    return jsonify({
+        "address": wallet,
+        "balance": balance,
+        "utxos": utxos,
+        "history": history
+    })
+
+# ==================================================
+# TX HISTORY (SIMPLE + WALLET READY)
+# ==================================================
+@app.route("/txs/<address>")
+def get_txs(address):
+
+    txs = []
+
+    for block in blockchain:
+
+        for i, tx in enumerate(block["transactions"]):
+
+            txid = block["hash"] + str(i)
+
+            # SEND
+            if tx.get("sender") == address:
+                txs.append({
+                    "type": "send",
+                    "amount": sum(out["amount"] for out in tx.get("outputs", []) if out["address"] != address),
+                    "to": [out["address"] for out in tx.get("outputs", []) if out["address"] != address],
+                    "block": block["index"],
+                    "txid": txid
+                })
+
+            # RECEIVE
+            for out in tx.get("outputs", []):
+                if out["address"] == address:
+                    txs.append({
+                        "type": "receive",
+                        "amount": out["amount"],
+                        "from": tx.get("sender"),
+                        "block": block["index"],
+                        "txid": txid
+                    })
+
+    return jsonify({
+        "address": address,
+        "txs": txs[::-1]  # latest first
+    })
+
+
+# ==================================================
+# GLOBAL LOCKS + STATE
+# ==================================================
+mining_lock = threading.Lock()
+blockchain_lock = threading.Lock()
+mempool_lock = threading.Lock()
+
+last_mine_time = 0
+MINE_COOLDOWN = 1.5   # anti spam
+
+
+# ==================================================
+# MINE (ULTRA PRO - FIXED)
+# ==================================================
+@app.route("/mine/<addr>")
+def mine(addr):
+
+    global pending_transactions, last_mine_time
+
+    # =========================================
+    # VALIDATION
+    # =========================================
+    if not addr.startswith("SOM") or len(addr) < 10:
+        return jsonify({"error": "invalid address"})
+
+    # =========================================
+    # RATE LIMIT
+    # =========================================
+    now = time.time()
+    if now - last_mine_time < MINE_COOLDOWN:
+        return jsonify({"status": "cooldown"})
+
+    last_mine_time = now
+
+    # =========================================
+    # SINGLE MINER LOCK
+    # =========================================
+    if not mining_lock.acquire(blocking=False):
+        return jsonify({"status": "already mining"})
+
+    try:
+
+        # =========================================
+        # GENESIS
+        # =========================================
+        if len(blockchain) == 0:
+            create_genesis()
+
+        # =========================================
+        # MEMPOOL SNAPSHOT
+        # =========================================
+        with mempool_lock:
+            mempool_snapshot = list(pending_transactions)
+
+        # =========================================
+        # SELECT TX (fee priority)
+        # =========================================
+        valid_txs = []
+
+        for tx in sorted(mempool_snapshot, key=lambda x: x.get("fee", 0), reverse=True):
+            try:
+                if tx.get("sender") == "NETWORK":
+                    continue
+
+                if verify_tx(tx):
+                    valid_txs.append(tx)
+
+                if len(valid_txs) >= MAX_TX_PER_BLOCK:
+                    break
+
+            except:
+                continue
+
+        # =========================================
+        # REWARD
+        # =========================================
+        total_fees = sum(float(tx.get("fee", 0)) for tx in valid_txs)
+        reward_amount = block_reward() + total_fees
+
+        coinbase_tx = {
+            "sender": "NETWORK",
+            "inputs": [],
+            "outputs": [{"address": addr, "amount": reward_amount}],
+            "timestamp": time.time()
+        }
+
+        block_txs = [coinbase_tx] + valid_txs
+
+        # =========================================
+        # CHAIN STATE
+        # =========================================
+        with blockchain_lock:
+            last_block = blockchain[-1]
+            index = last_block["index"] + 1
+            prev_hash = last_block["hash"]
+            difficulty = get_new_difficulty(blockchain)
+
+        print(f"⛏️ Mining block {index} | diff={difficulty}")
+
+        # =========================================
+        # MULTI CPU (FIXED)
+        # =========================================
+        cpu_count = multiprocessing.cpu_count()
+
+        with multiprocessing.Pool(cpu_count) as pool:
+
+            tasks = [
+                pool.apply_async(
+                    mine_worker,
+                    (i, cpu_count, index, prev_hash, block_txs, difficulty)
+                )
+                for i in range(cpu_count)
+            ]
+
+            nonce = None
+            timestamp = None
+            mined_hash = None
+
+            while True:
+
+                # 🔥 stop haddii chain change
+                with blockchain_lock:
+                    if blockchain[-1]["hash"] != prev_hash:
+                        print("⚠️ Chain changed → stop mining")
+                        return jsonify({"error": "chain changed"})
+
+                for t in tasks:
+                    if t.ready():
+                        result = t.get()
+                        if result:
+                            nonce, timestamp, mined_hash = result
+                            break
+
+                if nonce is not None:
+                    break
+
+                time.sleep(0.01)
+
+        # =========================================
+        # BLOCK
+        # =========================================
+        block = {
+            "index": index,
+            "timestamp": timestamp,
+            "transactions": block_txs,
+            "nonce": nonce,
+            "previous_hash": prev_hash,
+            "difficulty": difficulty,
+            "hash": mined_hash
+        }
+
+        # =========================================
+        # VALIDATE + ADD
+        # =========================================
+        with blockchain_lock:
+
+            if not validate_block(block, blockchain):
+                print("❌ INVALID BLOCK")
+                return jsonify({"error": "invalid block"})
+
+            blockchain.append(block)
+            update_utxo(block)
+
+            # REMOVE TX
+            with mempool_lock:
+                pending_transactions[:] = [
+                    tx for tx in pending_transactions if tx not in valid_txs
+                ]
+
+            save_data()
+
+        # =========================================
+        # BROADCAST
+        # =========================================
+        try:
+            p2p_broadcast({
+                "type": "block",
+                "data": block
+            })
+        except Exception as e:
+            print("Broadcast error:", e)
+
+        print(f"✅ BLOCK MINED: {index} | {mined_hash}")
+
+        return jsonify({
+            "status": "block mined",
+            "block": index,
+            "hash": mined_hash,
+            "reward": reward_amount,
+            "txs": len(block_txs)
+        })
+
+    except Exception as e:
+        print("❌ Mining error:", e)
+        return jsonify({"error": str(e)})
+
+    finally:
+        # ✅ FIX muhiim ah (bug kaaga ugu weyn)
+        if mining_lock.locked():
+            mining_lock.release()
+
+# ==================================================
+# GLOBAL STATE
+# ==================================================
+auto_mining = False
+auto_miner_thread = None
+
+# ==================================================
+# MINER LOAD BALANCER (REAL VPS NETWORK 🔥)
+# ==================================================
+import random
+import requests
+
+# 🌍 REAL VPS NODES (ADD YOUR SERVERS HERE)
+MINER_NODES = [
+    "http://167.86.117.249:9443",   # VPS 1 (MAIN)
+    "http://23.94.66.117:9443",     # VPS 2
+    # ku dar VPS kale halkan 👇
+    # "http://IP:PORT",
+]
+
+# ==================================================
+# GET BEST ALIVE NODE (SMART)
+# ==================================================
+def get_alive_node():
+
+    nodes = MINER_NODES[:]
+    random.shuffle(nodes)
+
+    best_node = None
+    best_score = -1
+
+    for node in nodes:
+        try:
+            r = requests.get(f"{node}/api", timeout=3)
+
+            if r.status_code != 200:
+                continue
+
+            data = r.json()
+
+            # 📊 SCORE SYSTEM (SMART LOAD BALANCE)
+            peers = data.get("peers", 0)
+            mempool = data.get("mempool", 0)
+            blocks = data.get("blocks", 0)
+
+            # 🔥 formula (optimize mining)
+            score = (peers * 3) + (blocks * 2) - (mempool * 4)
+
+            if score > best_score:
+                best_score = score
+                best_node = node
+
+        except:
+            continue
+
+    return best_node
+
+
+# ==================================================
+# MINE PROXY (GLOBAL MINING)
+# ==================================================
+@app.route("/mine_proxy/<addr>")
+def mine_proxy(addr):
+
+    node = get_alive_node()
+
+    if not node:
+        return jsonify({
+            "error": "❌ no alive nodes",
+            "network": "down"
+        })
+
+    try:
+        r = requests.get(f"{node}/mine/{addr}", timeout=120)
+
+        return jsonify({
+            "status": "success",
+            "node": node,
+            "result": r.json()
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "node": node
+        })
+
+# ==================================================
+# P2P BROADCAST
+# ==================================================
+import random
+
+def p2p_broadcast(msg):
+
+    data = (json.dumps(msg) + "\n").encode()
+
+    # 🔥 only send to best peers
+    peers_sorted = sorted(
+        p2p_peers,
+        key=lambda p: peer_scores.get(p, 0),
+        reverse=True
+    )
+
+    selected = peers_sorted[:8]  # top peers only
+
+    for peer in selected:
+        try:
+            host, port = peer.split(":")
+            port = int(port)
+
+            s = socket.socket()
+            s.settimeout(3)
+            s.connect((host, port))
+
+            s.sendall(data)
+            s.close()
+
+            mark_peer_alive(peer)
+            reward_peer(peer)
+
+        except:
+            punish_peer(peer)
+
+# ==================================================
+# HTTP BLOCK RECEIVE (FIXES PROPAGATION)
+# ==================================================
+@app.route("/receive_block", methods=["POST"])
+def receive_block_http():
+
+    global blockchain, pending_transactions
+
+    b = request.json
+
+    # ❗ check duplicate
+    if any(block["hash"] == b.get("hash") for block in blockchain):
+        return {"status": "duplicate"}
+
+    # ❗ check correct height
+    last_block = blockchain[-1]
+
+    if b.get("previous_hash") != last_block["hash"]:
+        return {"status": "out_of_sync"}
+
+    if not validate_block(b, blockchain):
+        return {"status": "invalid"}
+
+    # ✅ add block
+    blockchain.append(b)
+
+    # ✅ remove tx safely
+    with mempool_lock:
+        pending_transactions[:] = [
+            tx for tx in pending_transactions if tx not in b["transactions"]
+        ]
+
+    save_data()
+
+    # ✅ broadcast (relay)
+    p2p_broadcast({
+        "type": "block",
+        "data": b
+    })
+
+    print(f"🌐 Block received: {b['index']}")
+
+    return {"status": "accepted"}
+
+
+# ==================================================
+# API INFO
+# ==================================================
+@app.route("/api")
+def api():
+    return jsonify({
+        "network": NETWORK_NAME,
+        "creator": CREATOR,
+        "year": CREATED_YEAR,
+        "blocks": len(blockchain),
+        "mempool": len(pending_transactions),
+        "peers": len(p2p_peers),
+        "difficulty": get_new_difficulty(blockchain),
+        "supply": total_supply(),        # ✅ comma muhiim ah
+        "hashrate": calculate_hashrate()
+    })
+
+@app.route("/fee")
+def fee_api():
+    return jsonify({
+        "recommended_fee": get_recommended_fee(),
+        "mempool_size": len(pending_transactions)
+    })
+
+# ==================================================
+# GET BLOCK BY HEIGHT
+# ==================================================
+@app.route("/block/<int:height>")
+def get_block(height):
+    if height < len(blockchain):
+        block = blockchain[height]
+        return jsonify({
+            "height": height,
+            "hash": block["hash"],
+            "previous": block["previous_hash"],
+            "nonce": block["nonce"],
+            "time": block["timestamp"],
+            "tx": block["transactions"]
+        })
+    else:
+        return jsonify({"error": "block not found"}), 404
+
+# ==================================================
+# FULL CHAIN
+# ==================================================
+@app.route("/chain")
+def chain_api():
+    return jsonify({
+        "blocks": len(blockchain),
+        "chain": blockchain
+    })
+
+
+# ==================================================
+# MEMPOOL
+# ==================================================
+@app.route("/mempool")
+def mempool_api():
+    return jsonify(pending_transactions)
+
+
+# ==================================================
+# STATS
+# ==================================================
+@app.route("/stats")
+def stats_api():
+
+    blocks = len(blockchain)
+    mempool = len(pending_transactions)
+
+    return jsonify({
+        "network": NETWORK_NAME,
+        "blocks": blocks,
+        "mempool": mempool,
+        "difficulty": difficulty,
+        "supply": total_supply()
+    })
+
+# ==================================================
+# BLOCK BY HEIGHT
+# ==================================================
+@app.route("/api/block/<int:index>")
+def block_by_height(index):
+
+    if index < 0 or index >= len(blockchain):
+        return jsonify({"error": "block not found"})
+
+    return jsonify(blockchain[index])
+
+
+# ==================================================
+# ADDRESS BALANCE (UTXO MODEL)
+# ==================================================
+@app.route("/balance/<address>")
+def balance_api(address):
+
+    bal = 0
+
+    for utxo in utxo_set.values():
+        if utxo["address"] == address:
+            bal += utxo["amount"]
+
+    return jsonify({
+        "address": address,
+        "balance": bal
+    })
+
+
+# ==================================================
+# RICH LIST (UTXO BASED - FIXED)
+# ==================================================
+@app.route("/richlist")
+def richlist():
+
+    balances = {}
+
+    # 🔥 UTXO BASED (REAL BALANCE)
+    for utxo in utxo_set.values():
+
+        addr = utxo["address"]
+        amount = utxo["amount"]
+
+        balances[addr] = balances.get(addr, 0) + amount
+
+    # 🔽 sort richest first
+    rich = sorted(balances.items(), key=lambda x: x[1], reverse=True)
+
+    result = []
+    for addr, bal in rich[:100]:
+        if bal > 0:
+            result.append({
+                "address": addr,
+                "balance": round(bal, 8)
+            })
+
+    return jsonify(result)
+
+
+# ==================================================
+# TRANSACTION LOOKUP
+# ==================================================
+
+@app.route("/tx/<txid>")
+def get_transaction(txid):
+
+    for block in blockchain:
+        for i, tx in enumerate(block["transactions"]):
+
+            generated_txid = block["hash"] + str(i)
+
+            if generated_txid == txid:
+                return jsonify({
+                    "txid": generated_txid,
+                    "block": block["index"],
+                    "block_hash": block["hash"],
+                    "timestamp": block["timestamp"],
+                    "transaction": tx
+                })
+
+    return jsonify({"error": "transaction not found"})
+
+
+# ==================================================
+# TRANSACTION SEARCH
+# ==================================================
+
+@app.route("/api/search")
+def search():
+
+    q = request.args.get("q")
+
+    if not q:
+        return jsonify({"error": "missing query"})
+
+    # SEARCH BLOCK
+    if q.isdigit():
+
+        i = int(q)
+
+        if i < len(blockchain):
+            return jsonify({
+                "type": "block",
+                "data": blockchain[i]
+            })
+
+    # SEARCH TRANSACTION
+    for block in blockchain:
+        for i, tx in enumerate(block["transactions"]):
+
+            txid = block["hash"] + str(i)
+
+            if q == txid:
+                return jsonify({
+                    "type": "transaction",
+                    "block": block["index"],
+                    "txid": txid,
+                    "transaction": tx
+                })
+
+    # SEARCH ADDRESS
+    history = []
+
+    for block in blockchain:
+        for tx in block["transactions"]:
+
+            if tx.get("sender") == q or tx.get("receiver") == q:
+
+                history.append({
+                    "block": block["index"],
+                    "tx": tx
+                })
+
+    if history:
+        return jsonify({
+            "type": "address",
+            "history": history
+        })
+
+    return jsonify({"error": "not found"})
+
+
+# ==================================================
+# WALLET UI
+# ==================================================
+
+@app.route("/")
+def home():
+    return render_template("wallet.html")
+
+@app.route("/wallet")
+def wallet():
+    return render_template("wallet.html")
+
+
+# ==================================================
+# AUTO MINER (FINAL PRO VERSION)
+# ==================================================
+auto_mining = False
+
+def auto_mine():
+
+    global auto_mining
+
+    miner_address = "SOM2c6c6c6c5d9412a112ff10f749b40407a986"
+
+    print("⛏️ Auto miner started (stable)...")
+
+    backoff = 1
+    last_height = -1   # 🔥 prevent duplicate mining
+
+    while auto_mining:
+        try:
+            # =========================
+            # SAFE READ
+            # =========================
+            with mempool_lock:
+                tx_count = len(pending_transactions)
+
+            with blockchain_lock:
+                current_height = blockchain[-1]["index"]
+                peer_count = len(p2p_peers)
+
+            print(f"⛏️ Height:{current_height} | tx:{tx_count} | peers:{peer_count}")
+
+            # =========================
+            # IDLE MODE
+            # =========================
+            if tx_count == 0:
+               print("⚠️ Auto mining empty block...")
+
+            # =========================
+            # PREVENT RE-MINING SAME BLOCK
+            # =========================
+            if current_height == last_height:
+                time.sleep(0.5)
+                continue
+
+            # =========================
+            # PREVENT MULTI MINING
+            # =========================
+            if mining_lock.locked():
+                time.sleep(0.5)
+                continue
+
+            # =========================
+            # MINE BLOCK
+            # =========================
+            with app.test_request_context(f"/mine/{miner_address}"):
+                res = mine(miner_address)
+
+            data = res.get_json() if res else None
+
+            # =========================
+            # HANDLE RESULT
+            # =========================
+            if data and "block" in data:
+                print(f"✅ BLOCK {data['block']} mined | reward: {data.get('reward')}")
+                last_height = data["block"]
+                backoff = 1
+
+            elif data and data.get("status") in ["already mining", "cooldown"]:
+                # 🔕 ignore
+                pass
+
+            else:
+                print("⚠️ Skip:", data)
+                backoff = min(backoff + 1, 5)
+
+        except Exception as e:
+            print("💥 Miner error:", e)
+            backoff = min(backoff * 2, 10)
+
+        time.sleep(backoff)
+
+    print("🛑 Auto miner stopped")
+
+
+
+# ==================================================
+# 📥 RECEIVE PEERS (SECURE)
+# ==================================================
+@app.route("/peers", methods=["POST"])
+def receive_peers():
+
+    data = request.json
+    new_peers = data.get("peers", [])
+
+    added = 0
+
+    for peer in new_peers:
+        try:
+            ip, port = peer.split(":")
+            port = int(port)
+
+            if port not in ALLOWED_PORTS:
+                continue
+
+            if ip.startswith("127.") or ip == "0.0.0.0":
+                continue
+
+            if ip in banned_ips:
+                continue
+
+            clean_peer = f"{ip}:{port}"
+
+            if clean_peer not in p2p_peers:
+                p2p_peers.add(clean_peer)
+                peer_scores[clean_peer] = 0
+                added += 1
+
+        except:
+            continue
+
+    if added:
+        print(f"🌍 Added {added} peers")
+
+    return {"status": "ok", "added": added}
+
+
+# ==================================================
+# 📤 GET PEERS (FOR NETWORK)
+# ==================================================
+@app.route("/peers", methods=["GET"])
+def get_peers_api():
+    return jsonify({
+        "peers": list(p2p_peers)[:100]
+    })
+
+
+# ==================================================
+# 🧹 REMOVE BAD PEERS (ANTI-SPAM)
+# ==================================================
+def clean_bad_peers():
+    while True:
+        try:
+            for peer, score in list(peer_scores.items()):
+                if score < -3:
+                    print("🚫 Removing bad peer:", peer)
+                    p2p_peers.discard(peer)
+                    peer_scores.pop(peer, None)
+
+        except Exception as e:
+            print("Clean error:", e)
+
+        time.sleep(30)
+
+
+# ==================================================
+# 🌱 SEED NODES (REAL NETWORK BASE)
+# ==================================================
+
+def load_seed_nodes():
+    for seed in SEED_NODES:
+        if seed not in p2p_peers:
+            p2p_peers.add(seed)
+            peer_scores[seed] = 10  # 🔥 trusted
+
+# =========================
+# 🚀 AGGRESSIVE PEER CONNECT
+# =========================
+def aggressive_peer_connect():
+    while True:
+        try:
+            if len(p2p_peers) < 10:
+                print("🚀 Aggressive peer connect...")
+                random_bootstrap()
+                request_peers()
+        except Exception as e:
+            print("Peer connect error:", e)
+
+        time.sleep(10)
+
+# =========================
+# 🔄 AUTO SYNC (REAL)
+# =========================
+def auto_sync():
+    while True:
+        try:
+            best_chain = blockchain
+            best_length = len(blockchain)
+
+            for peer in list(p2p_peers):
+                try:
+                    res = requests.get(f"http://{peer}/chain", timeout=3)
+                    data = res.json()
+
+                    peer_chain = data.get("chain", [])
+                    peer_length = len(peer_chain)
+
+                    # 🔒 VALIDATION (STRONG)
+                    if peer_length > best_length:
+                        print(f"⬇️ Found longer chain from {peer} ({peer_length})")
+
+                        if is_valid_full_chain(peer_chain):
+                            best_chain = peer_chain
+                            best_length = peer_length
+                        else:
+                            print("❌ Invalid chain from", peer)
+
+                except Exception as e:
+                    continue
+
+            # 🔥 UPDATE haddii fiican
+            if best_length > len(blockchain):
+                print("🔥 Syncing to best chain...")
+
+                replace_chain(best_chain)
+                rebuild_utxo()
+                save_data()
+
+        except Exception as e:
+            print("Auto sync error:", e)
+
+        time.sleep(5)
+
+# =========================
+# 🌐 PEER DISCOVERY
+# =========================
+KNOWN_PEERS = set()
+
+def discover_peers():
+    while True:
+        try:
+            for peer in list(p2p_peers):
+                try:
+                    res = requests.get(f"{peer}/peers", timeout=3)
+                    data = res.json()
+
+                    for p in data.get("peers", []):
+                        if p not in p2p_peers and p not in KNOWN_PEERS:
+                            KNOWN_PEERS.add(p)
+                            p2p_peers.add(p)
+                            print("🌐 New peer:", p)
+
+                except:
+                    continue
+
+        except Exception as e:
+            print("Discovery error:", e)
+
+        time.sleep(10)
+
+
+# =========================
+# 🛡 FORK VALIDATION
+# =========================
+def is_valid_chain(chain):
+    try:
+        for i in range(1, len(chain)):
+            prev = chain[i - 1]
+            curr = chain[i]
+
+            if curr["previous_hash"] != hash_block(prev):
+                return False
+
+            if not valid_proof(curr):
+                return False
+
+        return True
+
+    except:
+        return False
+
+
+# =========================
+# 🧱 ORPHAN SYSTEM
+# =========================
+orphan_blocks = []
+
+def orphan_blocks_count():
+    return len(orphan_blocks)
+
+
+# =========================
+# 🚀 PEER BOOST
+# =========================
+def peer_boost():
+    while True:
+        try:
+            if len(p2p_peers) < 5:
+                print("🚀 Boosting peers...")
+                random_bootstrap()
+                request_peers()
+
+        except Exception as e:
+            print("Peer boost error:", e)
+
+        time.sleep(15)
+
+
+# =========================
+# 🔧 ORPHAN FIX
+# =========================
+def auto_resolve_orphans():
+    while True:
+        try:
+            if len(p2p_peers) < 2:
+                time.sleep(5)
+                continue
+
+            if orphan_blocks_count() > 3:
+                print("⚠️ Too many orphans → sync")
+                request_chain()
+
+        except Exception as e:
+            print("Orphan fix error:", e)
+
+        time.sleep(10)
+
+# ================================================
+# START NODE (PRO + REAL STABLE VERSION)
+# ==================================================
+if __name__ == "__main__":
+
+    import os
+    import threading
+    import time
+    import random
+    import secrets
+    from ecdsa import SigningKey, SECP256k1
+
+    # =========================
+    # CONFIG
+    # =========================
+    HTTP_PORT = int(os.environ.get("PORT", 9443))
+    P2P_PORT = int(os.environ.get("P2P_PORT", 9334))
+
+    print("🚀 Starting SomCoin node...")
+
+    # =========================
+    # LOAD BLOCKCHAIN
+    # =========================
+    try:
+        load_data()
+    except Exception as e:
+        print("❌ Load error:", e)
+
+    if not blockchain:
+        print("⚠️ Creating genesis block...")
+        create_genesis()
+
+    # =========================
+    # BUILD UTXO
+    # =========================
+    try:
+        rebuild_utxo()
+    except Exception as e:
+        print("❌ UTXO rebuild error:", e)
+
+    # =========================
+    # THREAD HELPER
+    # =========================
+    def start_thread(target, name):
+        try:
+            t = threading.Thread(target=target, daemon=True)
+            t.start()
+            print(f"✅ {name} started")
+        except Exception as e:
+            print(f"❌ {name} failed:", e)
+
+    # =========================
+    # 🔥 EXTRA SYSTEMS (NEW)
+    # =========================
+    def force_sync():
+        while True:
+            try:
+                if len(p2p_peers) > 0:
+                    request_chain()
+            except Exception as e:
+                print("Force sync error:", e)
+            time.sleep(5)
+
+    def auto_resolve_orphans():
+        while True:
+            try:
+                if len(p2p_peers) < 2:
+                    time.sleep(5)
+                    continue
+
+                if orphan_blocks_count() > 3:
+                    print("⚠️ Too many orphans → forcing sync...")
+                    request_chain()
+
+            except Exception as e:
+                print("Orphan fix error:", e)
+
+            time.sleep(10)
+
+    def peer_boost():
+        while True:
+            try:
+                with peers_lock:
+                    count = len(p2p_peers)
+
+                if count < 5:
+                    print("🚀 Boosting peers...")
+                    random_bootstrap()
+                    request_peers()
+
+            except Exception as e:
+                print("Peer boost error:", e)
+
+            time.sleep(15)
+
+    # =========================
+    # CORE NETWORK
+    # =========================
+    start_thread(p2p_server, "P2P Server")
+    start_thread(sync_chain, "Chain Sync")
+    start_thread(auto_connect, "Auto Connect")
+    start_thread(ping_peers, "Peer Ping")
+    start_thread(aggressive_peer_connect, "Peer Boost Pro")
+    start_thread(auto_sync, "Auto Sync")
+
+    # =========================
+    # SMART NETWORK
+    # =========================
+    start_thread(smart_discovery, "Smart Discovery")
+    start_thread(force_sync, "Force Sync")                 # 🔥 NEW
+    start_thread(auto_resolve_orphans, "Orphan Fix")       # 🔥 NEW
+    start_thread(peer_boost, "Peer Boost")                 # 🔥 NEW
+
+    # =========================
+    # CLEAN + RECOVERY
+    # =========================
+    start_thread(ensure_minimum_peers, "Peer Recovery")
+    start_thread(auto_clean_mempool, "Mempool Cleaner")
+    start_thread(clean_bad_peers, "Peer Cleaner")
+
+    # =========================
+    # FAST SYNC
+    # =========================
+    start_thread(fast_sync, "Fast Sync")
+    start_thread(auto_connect_new_nodes, "Auto Connect")
+
+    # =========================
+    # ⛏ HYBRID SMART MINER
+    # =========================
+    def smart_miner():
+
+        miner_address = "SOM2c6c6c6c5d9412a112ff10f749b40407a986"
+        print("⛏ Smart miner running (HYBRID MODE)")
+
+        last_empty_mine = 0
+        EMPTY_BLOCK_INTERVAL = 300
+
+        while True:
+            try:
+                # 🔥 HA MININ haddii peers yar yihiin
+                if len(p2p_peers) < 2:
+                    print("⚠️ Waiting for peers before mining...")
+                    time.sleep(5)
+                    continue
+
+                with mempool_lock:
+                    tx_count = len(pending_transactions)
+
+                now = time.time()
+
+                if tx_count == 0:
+                    if now - last_empty_mine < EMPTY_BLOCK_INTERVAL:
+                        print("⚠️ No tx... waiting")
+                        time.sleep(2)
+                        continue
+
+                    print("⛏ Mining empty block (keep network alive)")
+                    last_empty_mine = now
+
+                if mining_lock.locked():
+                    time.sleep(5)
+                    continue
+
+                with app.test_request_context(f"/mine/{miner_address}"):
+                    res = mine(miner_address)
+
+                data = res.get_json() if res else None
+
+                if data and "block" in data:
+                    print(f"✅ Block {data['block']} mined | reward: {data.get('reward')}")
+
+                elif data and data.get("status") in ["cooldown", "already mining"]:
+                    pass
+
+                else:
+                    print("⚠️ Mining skip:", data)
+
+            except Exception as e:
+                print("💥 Miner error:", e)
+
+            time.sleep(1)
+
+    # start_thread(smart_miner, "Smart Miner")
+
+    # =========================
+    # CONNECT NETWORK
+    # =========================
+    try:
+        load_seed_nodes()
+        connect_seed_nodes()
+        print("🌐 Connected to network")
+    except Exception as e:
+        print("❌ Seed error:", e)
+
+    # =========================
+    # INITIAL SYNC
+    # =========================
+    time.sleep(2)
+    try:
+        request_peers()
+        request_chain()
+        print("🔄 Sync complete")
+    except Exception as e:
+        print("❌ Sync error:", e)
+
+    # =========================
+    # INFO
+    # =========================
+    print("🔥 SomCoin READY")
+    print("🌐 HTTP:", HTTP_PORT)
+    print("📡 P2P:", P2P_PORT)
+    print("👥 Peers:", len(p2p_peers))
+
+    # =========================
+    # AUTO START MINING
+    # =========================
+    def auto_start_mining():
+        time.sleep(5)
+        try:
+            requests.get("http://127.0.0.1:9443/start_auto_mine")
+            print("🚀 Auto mining started (new node)")
+        except Exception as e:
+            print("Auto mine error:", e)
+
+    start_thread(auto_start_mining, "Auto Mining Starter")
+
+    # =========================
+    # RUN SERVER
+    # =========================
+    app.run(
+        host="0.0.0.0",
+        port=HTTP_PORT,
+        use_reloader=False,
+        threaded=True
+    )
