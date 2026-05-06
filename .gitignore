@@ -1,0 +1,52 @@
+# =========================
+# PYTHON / ENV
+# =========================
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# =========================
+# LOGS / TEMP
+# =========================
+*.log
+*.out
+*.tmp
+nohup.out
+
+# =========================
+# BLOCKCHAIN DATA (LOCAL)
+# =========================
+blockchain.json
+blockchain.json.tmp
+mempool.json
+peers.json
+chain.json
+
+# =========================
+# PRIVATE / SECURITY
+# =========================
+private/
+backup/
+wallets/
+node_key.pem
+node_id.txt
+*.pem
+
+# =========================
+# BACKUPS / OLD FILES
+# =========================
+*.save
+*.bak
+
+# =========================
+# OS FILES
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# OPTIONAL UI BACKUPS
+# =========================
+*.html.save
