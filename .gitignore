@@ -50,3 +50,15 @@ Thumbs.db
 # OPTIONAL UI BACKUPS
 # =========================
 *.html.save
+
+# =========================
+# RUNTIME DATA
+# =========================
+earn.json
+earn_data.json
+*.db
+
+# =========================
+# SYSTEMD / LOCAL
+# =========================
+*.service
