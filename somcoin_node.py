@@ -1825,6 +1825,22 @@ def get_utxos(address):
 
     return jsonify({"utxos": result})
 
+# =========================
+# GET BALANCE (UTXO)
+# =========================
+@app.route("/get_balance/<address>")
+def get_balance(address):
+
+    return jsonify({
+        "address": address,
+        "balance": balance(address),
+        "pending_balance": balance_with_pending(address),
+        "utxos": len([
+            u for u in utxo_set.values()
+            if u["address"] == address
+        ])
+    })
+
 # ==================================================
 # 🚀 SEND TRANSACTION (ULTRA PRO NODE FINAL)
 # ==================================================
