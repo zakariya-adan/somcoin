@@ -80,6 +80,7 @@ def mine():
                 if nonce % 50000 == 0:
 
                     try:
+
                         latest = get_template()
 
                         # chain changed
@@ -109,7 +110,7 @@ def mine():
                 # HASHRATE
                 # ==========================================
 
-                if hashes % 100000 == 0:
+                if hashes % 10000 == 0:
 
                     elapsed = time.time() - start
 
@@ -121,6 +122,29 @@ def mine():
                             f"⚡ {hr:,} H/s | "
                             f"Nonce {nonce}"
                         )
+
+                        # ==========================================
+                        # SEND REAL MINER TO DASHBOARD
+                        # ==========================================
+
+                        try:
+
+                            requests.post(
+                                "https://somcoin.online/submit_miner",
+                                json={
+
+                                    "address": ADDRESS,
+
+                                    "hashrate": hr,
+
+                                    "shares": hashes
+
+                                },
+                                timeout=5
+                            )
+
+                        except:
+                            pass
 
                 # ==========================================
                 # BLOCK FOUND
