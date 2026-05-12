@@ -178,7 +178,7 @@ def mine():
                         r = requests.post(
                             f"{NODE_URL}/submit_block",
                             json={"block": block},
-                            timeout=20
+                            timeout=600
                         )
 
                         result = r.json()
