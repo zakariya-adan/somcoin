@@ -2764,17 +2764,150 @@ def is_valid_full_chain(chain):
         print("❌ Chain validation error:", e)
         return False
 
+# ==================================================
+# 🚀 BETTER CHAIN
+# (ULTRA PRO MAX 🔥)
+# ==================================================
 def better_chain(new_chain):
-    if not is_valid_full_chain(new_chain):
+
+    global blockchain
+
+    try:
+
+        # =========================
+        # BASIC CHECK
+        # =========================
+        if not isinstance(new_chain, list):
+
+            print("❌ Reject: not list")
+
+            return False
+
+        if len(new_chain) == 0:
+
+            print("❌ Reject: empty chain")
+
+            return False
+
+        # =========================
+        # GENESIS CHECK
+        # =========================
+        genesis = new_chain[0]
+
+        if genesis.get("index") != 0:
+
+            print("❌ Reject: bad genesis")
+
+            return False
+
+        # =========================
+        # LOCAL INFO
+        # =========================
+        local_height = len(blockchain)
+        new_height = len(new_chain)
+
+        local_work = chain_work(blockchain)
+        new_work = chain_work(new_chain)
+
+        print(
+            f"⚖️ Chain compare | "
+            f"local_height={local_height} "
+            f"| new_height={new_height} "
+            f"| local_work={local_work} "
+            f"| new_work={new_work}"
+        )
+
+        # =========================
+        # FAST SYNC MODE 🔥
+        # huge chains validate partial
+        # =========================
+        if new_height > 5000:
+
+            print("⚡ Fast sync validation")
+
+            try:
+
+                sample_chain = []
+
+                # genesis
+                sample_chain.append(new_chain[0])
+
+                # last 500 blocks
+                sample_chain.extend(
+                    new_chain[-500:]
+                )
+
+                if not is_valid_full_chain(sample_chain):
+
+                    print(
+                        "❌ Fast validation failed"
+                    )
+
+                    return False
+
+            except Exception as e:
+
+                print(
+                    "❌ Fast sync error:",
+                    e
+                )
+
+                return False
+
+        else:
+
+            # =========================
+            # FULL VALIDATION
+            # =========================
+            if not is_valid_full_chain(new_chain):
+
+                print(
+                    "❌ Invalid chain rejected"
+                )
+
+                return False
+
+        # =========================
+        # WORK CHECK
+        # BITCOIN STYLE
+        # =========================
+        if new_work > local_work:
+
+            print(
+                "✅ Stronger chain detected"
+            )
+
+            return True
+
+        # =========================
+        # HEIGHT FALLBACK
+        # =========================
+        if (
+            new_height > local_height
+            and new_work >= local_work * 0.95
+        ):
+
+            print(
+                "✅ Longer compatible chain"
+            )
+
+            return True
+
+        # =========================
+        # REJECT
+        # =========================
+        print("ℹ️ Weaker chain ignored")
+
         return False
 
-    local_work = chain_work(blockchain)
-    new_work = chain_work(new_chain)
+    except Exception as e:
 
-    if new_work > local_work * 1.1:
-        return True
+        print(
+            "❌ better_chain fatal error:",
+            e
+        )
 
-    return False
+        return False
 
 # =========================
 # 🚀 REPLACE CHAIN
@@ -4452,16 +4585,39 @@ def get_block(height):
     else:
         return jsonify({"error": "block not found"}), 404
 
-# ==================================================
-# FULL CHAIN
-# ==================================================
+# =========================
+# 🚀 GET CHAIN (COMPRESSED)
+# =========================
 @app.route("/chain")
-def chain_api():
-    return jsonify({
-        "blocks": len(blockchain),
-        "chain": blockchain
-    })
+def get_chain():
 
+    try:
+
+        limit = request.args.get(
+            "limit",
+            default=1000,
+            type=int
+        )
+
+        if limit < 1:
+            limit = 1
+
+        if limit > 5000:
+            limit = 5000
+
+        chain_slice = blockchain[-limit:]
+
+        return jsonify({
+            "height": len(blockchain) - 1,
+            "count": len(chain_slice),
+            "chain": chain_slice
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 # ==================================================
 # MEMPOOL
