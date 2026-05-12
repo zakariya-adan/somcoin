@@ -2785,25 +2785,23 @@ def replace_chain(new_chain):
     global blockchain
     global pending_transactions
 
+    old_chain = blockchain.copy()
+
     try:
 
         # =========================
         # BASIC VALIDATION
         # =========================
         if not isinstance(new_chain, list):
+
             print("❌ Reject: chain not list")
+
             return False
 
         if len(new_chain) == 0:
-            print("❌ Reject: empty chain")
-            return False
 
-        if len(new_chain) <= len(blockchain):
-            print(
-                f"ℹ️ Ignore smaller chain "
-                f"| local={len(blockchain)} "
-                f"| new={len(new_chain)}"
-            )
+            print("❌ Reject: empty chain")
+
             return False
 
         # =========================
@@ -2821,38 +2819,34 @@ def replace_chain(new_chain):
             return False
 
         # =========================
-        # WORK COMPARISON
+        # ⚖️ BITCOIN-STYLE WORK CHECK
         # =========================
         local_work = chain_work(blockchain)
         new_work = chain_work(new_chain)
 
         print(
-            f"⚖️ Chain work "
+            f"⚖️ Work compare "
             f"| local={local_work} "
             f"| new={new_work}"
         )
 
         # =========================
-        # LONGEST + STRONGEST
+        # ONLY ACCEPT STRONGER CHAIN
         # =========================
-        stronger = False
-
-        if new_work > local_work:
-            stronger = True
-
-        elif len(new_chain) > len(blockchain):
-            stronger = True
-
-        if not stronger:
+        if new_work <= local_work:
 
             print("ℹ️ Weaker chain ignored")
 
             return False
 
         # =========================
-        # SAFE BACKUP
+        # EXTRA SAFETY
         # =========================
-        old_chain = blockchain.copy()
+        if len(new_chain) < len(blockchain) * 0.5:
+
+            print("❌ Suspicious chain rejected")
+
+            return False
 
         print(
             f"🌐 Replacing blockchain "
@@ -2862,7 +2856,9 @@ def replace_chain(new_chain):
         # =========================
         # REPLACE CHAIN
         # =========================
-        blockchain = new_chain
+        blockchain.clear()
+
+        blockchain.extend(new_chain)
 
         # =========================
         # REBUILD STATE
@@ -2880,21 +2876,33 @@ def replace_chain(new_chain):
             for tx in block.get("transactions", []):
 
                 try:
-                    confirmed.add(tx_hash(tx))
+
+                    confirmed.add(
+                        tx_hash(tx)
+                    )
+
                 except:
-                    continue
+                    pass
 
         pending_transactions = [
+
             tx for tx in pending_transactions
+
             if tx_hash(tx) not in confirmed
         ]
 
         # =========================
-        # FAILSAFE
+        # FAILSAFE UTXO FIX
         # =========================
-        if len(utxo_set) == 0 and len(blockchain) > 1:
+        if (
+            len(utxo_set) == 0
+            and len(blockchain) > 1
+        ):
 
-            print("⚠️ Empty UTXO detected")
+            print(
+                "⚠️ Empty UTXO detected "
+                "→ rebuilding..."
+            )
 
             rebuild_utxo()
 
@@ -2913,20 +2921,27 @@ def replace_chain(new_chain):
 
     except Exception as e:
 
-        print("❌ Replace chain fatal error:", e)
+        print(
+            "❌ Replace chain fatal error:",
+            e
+        )
 
         # =========================
         # RECOVERY
         # =========================
         try:
 
-            blockchain = old_chain
+            blockchain.clear()
+
+            blockchain.extend(old_chain)
 
             rebuild_utxo()
 
             save_data()
 
-            print("🛠 Chain recovery completed")
+            print(
+                "🛠 Chain recovery completed"
+            )
 
         except Exception as recovery_error:
 
