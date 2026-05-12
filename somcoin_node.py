@@ -4533,6 +4533,10 @@ def api():
         "hashrate": calculate_hashrate()
     })
 
+@app.route("/chain")
+def chain_api():
+    return jsonify(blockchain)
+
 @app.route("/fee")
 def fee_api():
     return jsonify({
@@ -4977,45 +4981,106 @@ def load_seed_nodes():
             p2p_peers.add(seed)
             peer_scores[seed] = 10  # 🔥 trusted
 
-# =========================
-# 🔄 AUTO SYNC (REAL)
-# =========================
+# ==================================================
+# 🌍 AUTO BLOCKCHAIN SYNC
+# ==================================================
 def auto_sync():
+
+    global blockchain
+
     while True:
+
         try:
-            best_chain = blockchain
-            best_work = chain_work(blockchain)
 
-            for peer in list(p2p_peers):
+            local_height = len(blockchain) - 1
+
+            peers = get_best_peers(5)
+
+            for peer in peers:
+
                 try:
-                    res = requests.get(f"http://{peer}/chain", timeout=3)
-                    data = res.json()
 
-                    peer_chain = data.get("chain", [])
+                    ip, port = peer.split(":")
 
-                    # 🔒 VALIDATE
-                    if is_valid_full_chain(peer_chain):
+                    # =========================
+                    # GET PEER INFO
+                    # =========================
+                    r = requests.get(
+                        f"http://{ip}:9443/api",
+                        timeout=5
+                    )
 
-                        peer_work = chain_work(peer_chain)
+                    if r.status_code != 200:
+                        continue
 
-                        if peer_work > best_work:
-                            print(f"⬇️ Better chain from {peer} (work={peer_work})")
-                            best_chain = peer_chain
-                            best_work = peer_work
+                    info = r.json()
 
-                except:
-                    continue
+                    peer_height = info.get("blocks", 0)
 
-            # 🔥 UPDATE haddii work ka fiican yahay
-            if best_work > chain_work(blockchain):
-                print("🔥 Syncing to strongest chain...")
-                replace_chain(best_chain)
+                    # =========================
+                    # ONLY IF PEER AHEAD
+                    # =========================
+                    if peer_height <= local_height:
+                        continue
+
+                    print(
+                        f"🌍 Sync candidate {peer} "
+                        f"| local={local_height} "
+                        f"| peer={peer_height}"
+                    )
+
+                    # =========================
+                    # DOWNLOAD CHAIN
+                    # =========================
+                    r = requests.get(
+                        f"http://{ip}:9443/chain",
+                        timeout=15
+                    )
+
+                    if r.status_code != 200:
+                        continue
+
+                    new_chain = r.json()
+
+                    # =========================
+                    # VALIDATE FORMAT
+                    # =========================
+                    if not isinstance(new_chain, list):
+                        continue
+
+                    if len(new_chain) == 0:
+                        continue
+
+                    # =========================
+                    # BETTER CHAIN
+                    # =========================
+                    if better_chain(new_chain):
+
+                        print(
+                            f"✅ Syncing from {peer}"
+                        )
+
+                        replace_chain(new_chain)
+
+                        save_data()
+
+                        break
+
+                except Exception as e:
+
+                    print(
+                        "Peer sync error:",
+                        e
+                    )
 
         except Exception as e:
-            print("Auto sync error:", e)
 
-        time.sleep(5)
+            print(
+                "Auto sync error:",
+                e
+            )
 
+        time.sleep(15)
 
 # =========================
 # 🧱 ORPHAN SYSTEM
