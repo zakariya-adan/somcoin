@@ -66,25 +66,54 @@ def get_new_difficulty(chain):
 
     return difficulty
 
-# =========================
-# 🔥 SMART DIFFICULTY (BASED ON MINERS)
-# =========================
+# ==================================================
+# 🔥 AUTO SCALING DIFFICULTY (SMART NETWORK)
+# ==================================================
 def dynamic_difficulty():
+
+    global blockchain
+    global p2p_peers
+
+    # =========================
+    # BASE FROM BLOCK SPEED
+    # =========================
     base = get_new_difficulty(blockchain)
 
-    miner_count = len(p2p_peers)
+    peer_count = len(p2p_peers)
 
-    if miner_count < 5:
-        return max(2, base - 1)
+    # =========================
+    # AUTO SCALE BY NETWORK SIZE
+    # =========================
+    if peer_count < 5:
 
-    elif miner_count < 20:
-        return base
+        min_diff = 3
+        max_diff = 5
 
-    elif miner_count < 100:
-        return base + 1
+    elif peer_count < 20:
+
+        min_diff = 4
+        max_diff = 6
+
+    elif peer_count < 100:
+
+        min_diff = 5
+        max_diff = 8
 
     else:
-        return base + 2
+
+        min_diff = 6
+        max_diff = 10
+
+    # =========================
+    # LIMITS
+    # =========================
+    if base < min_diff:
+        base = min_diff
+
+    if base > max_diff:
+        base = max_diff
+
+    return base
 
 # ==================================================
 # 🌍 P2P CONFIG (PRO GLOBAL - REAL BITCOIN STYLE 🚀)
@@ -760,6 +789,8 @@ def add_peer(peer):
     except Exception as e:
         return {"error": str(e)}
 
+
+
 # ==================================================
 # NETWORK INFO
 # ==================================================
@@ -781,6 +812,8 @@ pending_transactions = []
 # ==================================================
 
 utxo_set = {}
+
+address_balances = {}
 
 blockchain_lock = threading.Lock()
 
@@ -1176,61 +1209,127 @@ def mine_block(index, prev_hash, block_txs, difficulty):
 
             time.sleep(0.01)
 
-
 # ==================================================
-# GENESIS (LOCKED)
+# GENESIS BLOCK (LOCKED + BITCOIN STYLE 🚀)
 # ==================================================
 def create_genesis():
 
     global blockchain
+    global utxo_set
+    global address_balances
 
-    # haddii blockchain file hore u jiro → ha samayn genesis
+    # =========================
+    # LOAD EXISTING BLOCKCHAIN
+    # =========================
     if os.path.exists(BLOCKCHAIN_FILE):
+
         try:
-            with open(BLOCKCHAIN_FILE) as f:
+
+            with open(BLOCKCHAIN_FILE, "r") as f:
+
                 data = json.load(f)
 
             if isinstance(data, list) and len(data) > 0:
+
                 blockchain = data
-                print("Existing blockchain detected — genesis skipped")
+
+                print(
+                    f"✅ Existing blockchain loaded "
+                    f"| height={len(blockchain)-1}"
+                )
+
+                # rebuild state
+                rebuild_utxo()
+
                 return
 
-        except:
-            pass
+        except Exception as e:
 
-    # haddii chain ma jiro → samee genesis
+            print("⚠️ Blockchain load failed:", e)
+
+    # =========================
+    # CREATE GENESIS
+    # =========================
+    print("🚀 Creating genesis block...")
+
+    genesis_tx = {
+        "sender": "NETWORK",
+        "inputs": [],
+        "outputs": [
+            {
+                "address": "SOM_GENESIS",
+                "amount": 50
+            }
+        ],
+        "message": "SomCoin Genesis Block 2026",
+        "timestamp": 1700000000
+    }
+
     genesis = {
         "index": 0,
         "timestamp": 1700000000,
-        "transactions": [],
+        "transactions": [genesis_tx],
         "nonce": 0,
-        "previous_hash": "0",
-        "difficulty": difficulty
+        "previous_hash": "0" * 64,
+        "difficulty": MIN_DIFFICULTY
     }
 
+    # =========================
     # HASH GENESIS
-    genesis["hash"] = calculate_hash(
+    # =========================
+    tx_str = json.dumps(
+        genesis["transactions"],
+        sort_keys=True
+    )
+
+    genesis_hash = calculate_hash(
         genesis["index"],
         genesis["previous_hash"],
         genesis["timestamp"],
         genesis["nonce"],
-        genesis["transactions"]
+        tx_str
     )
 
-    blockchain.append(genesis)
+    genesis["hash"] = genesis_hash
 
+    # =========================
+    # SAVE CHAIN
+    # =========================
+    blockchain = [genesis]
+
+    # =========================
+    # BUILD UTXO STATE
+    # =========================
+    rebuild_utxo()
+
+    # =========================
+    # SAVE TO DISK
+    # =========================
     save_data()
 
-    print("Genesis block created")
+    print(
+        f"✅ Genesis block created "
+        f"| hash={genesis_hash[:32]}..."
+    )
+
+
 # ==================================================
 # REBUILD UTXO SET
 # ==================================================
 def rebuild_utxo():
 
     global utxo_set
+    global address_balances
 
+    # =========================
+    # RESET
+    # =========================
     utxo_set = {}
+    address_balances = {}
 
+    # =========================
+    # REBUILD FROM BLOCKCHAIN
+    # =========================
     for block in blockchain:
 
         for tx in block["transactions"]:
@@ -1239,19 +1338,58 @@ def rebuild_utxo():
                 json.dumps(tx, sort_keys=True).encode()
             ).hexdigest()
 
+            # =========================
+            # REMOVE SPENT INPUTS
+            # =========================
             for inp in tx.get("inputs", []):
+
                 key = f'{inp["txid"]}:{inp["index"]}'
-                if key in utxo_set:
+
+                spent = utxo_set.get(key)
+
+                if spent:
+
+                    addr = spent["address"]
+                    amt = spent["amount"]
+
+                    # subtract balance
+                    address_balances[addr] = round(
+                        address_balances.get(addr, 0) - amt,
+                        8
+                    )
+
                     del utxo_set[key]
 
+            # =========================
+            # ADD OUTPUTS
+            # =========================
             for i, out in enumerate(tx.get("outputs", [])):
+
+                amount = round(out.get("amount", 0), 8)
+
+                if amount <= 0:
+                    continue
+
+                addr = out["address"]
 
                 key = f"{txid}:{i}"
 
                 utxo_set[key] = {
-                    "address": out["address"],
-                    "amount": out["amount"]
+                    "address": addr,
+                    "amount": amount
                 }
+
+                # add balance
+                address_balances[addr] = round(
+                    address_balances.get(addr, 0) + amount,
+                    8
+                )
+
+    print(
+        f"✅ UTXO rebuilt | "
+        f"utxos={len(utxo_set)} | "
+        f"wallets={len(address_balances)}"
+    )
 
 # =========================
 # TX HASH
@@ -1267,40 +1405,58 @@ def tx_hash(tx):
 def update_utxo(block):
 
     global utxo_set
+    global address_balances
 
     for tx in block["transactions"]:
-
-        # 🔒 SKIP INVALID TX
-        if not verify_tx(tx):
-            print("❌ Skipping invalid tx in UTXO")
-            continue
 
         txid = tx_hash(tx)
 
         # =========================
-        # REMOVE INPUTS (SPENT)
+        # REMOVE INPUTS
         # =========================
         if tx.get("sender") != "NETWORK":
 
             for inp in tx.get("inputs", []):
+
                 key = f'{inp["txid"]}:{inp["index"]}'
 
-                if key in utxo_set:
+                utxo = utxo_set.get(key)
+
+                if utxo:
+
+                    addr = utxo["address"]
+                    amt = utxo["amount"]
+
+                    address_balances[addr] = round(
+                        address_balances.get(addr, 0) - amt,
+                        8
+                    )
+
                     del utxo_set[key]
 
         # =========================
-        # ADD OUTPUTS (NEW UTXO)
+        # ADD OUTPUTS
         # =========================
         for index, out in enumerate(tx.get("outputs", [])):
 
-            # 🔒 CHECK AMOUNT
-            if out.get("amount", 0) <= 0:
+            amount = round(out["amount"], 8)
+
+            if amount <= 0:
                 continue
 
-            utxo_set[f"{txid}:{index}"] = {
-                "address": out.get("address"),
-                "amount": round(out.get("amount"), 8)
+            addr = out["address"]
+
+            key = f"{txid}:{index}"
+
+            utxo_set[key] = {
+                "address": addr,
+                "amount": amount
             }
+
+            address_balances[addr] = round(
+                address_balances.get(addr, 0) + amount,
+                8
+            )
 
 
 # ==================================================
@@ -1649,15 +1805,10 @@ def auto_merge_wallet(address):
 # BALANCE (UTXO BASED)
 # ==================================================
 def balance(addr):
-
-    bal = 0
-
-    for utxo in utxo_set.values():
-        if utxo["address"] == addr:
-            bal += utxo["amount"]
-
-    return round(bal, 8)
-
+    return round(
+        address_balances.get(addr, 0),
+        8
+    )
 
 # ==================================================
 # BALANCE WITH PENDING (MEMPOOL AWARE)
@@ -1742,70 +1893,279 @@ def get_block_template():
 
 @app.route("/submit_block", methods=["POST"])
 def submit_block():
-    try:
-        data = request.json
 
+    global blockchain
+    global pending_transactions
+    global utxo_set
+
+    try:
+
+        data = request.get_json(force=True)
+
+        # =========================
+        # BASIC VALIDATION
+        # =========================
         if not data:
-            return {"status": "rejected", "reason": "no data"}
+            return jsonify({
+                "status": "rejected",
+                "reason": "no data"
+            }), 400
 
         block = data.get("block")
 
-        if not block or "transactions" not in block:
-            return {"status": "rejected", "reason": "invalid block"}
+        if not isinstance(block, dict):
+            return jsonify({
+                "status": "rejected",
+                "reason": "invalid block format"
+            }), 400
+
+        required = [
+            "index",
+            "previous_hash",
+            "timestamp",
+            "nonce",
+            "transactions",
+            "difficulty",
+            "hash"
+        ]
+
+        for field in required:
+            if field not in block:
+                return jsonify({
+                    "status": "rejected",
+                    "reason": f"missing {field}"
+                }), 400
 
         txs = block["transactions"]
 
-        # =========================
-        # 1. COINBASE CHECK
-        # =========================
-        if not txs or txs[0].get("sender") != "NETWORK":
-            return {"status": "rejected", "reason": "no coinbase"}
+        if not isinstance(txs, list) or len(txs) == 0:
+            return jsonify({
+                "status": "rejected",
+                "reason": "empty transactions"
+            }), 400
 
         # =========================
-        # 2. REWARD CHECK
+        # BLOCK SIZE LIMIT
         # =========================
-        fees = sum(tx.get("fee", 0) for tx in txs[1:])
-        max_reward = block_reward() + fees
+        if len(json.dumps(block)) > 2_000_000:
+            return jsonify({
+                "status": "rejected",
+                "reason": "block too large"
+            }), 400
 
-        coinbase_amount = sum(
-            out.get("amount", 0) for out in txs[0].get("outputs", [])
+        # =========================
+        # COINBASE CHECK
+        # =========================
+        coinbase = txs[0]
+
+        if coinbase.get("sender") != "NETWORK":
+            return jsonify({
+                "status": "rejected",
+                "reason": "missing coinbase"
+            }), 400
+
+        if coinbase.get("inputs"):
+            return jsonify({
+                "status": "rejected",
+                "reason": "coinbase inputs invalid"
+            }), 400
+
+        outputs = coinbase.get("outputs", [])
+
+        if len(outputs) != 1:
+            return jsonify({
+                "status": "rejected",
+                "reason": "invalid coinbase outputs"
+            }), 400
+
+        reward_amount = outputs[0].get("amount", 0)
+
+        if reward_amount <= 0:
+            return jsonify({
+                "status": "rejected",
+                "reason": "invalid reward"
+            }), 400
+
+        # =========================
+        # REWARD LIMIT
+        # =========================
+        total_fees = 0
+
+        for tx in txs[1:]:
+
+            if not verify_tx(tx):
+                return jsonify({
+                    "status": "rejected",
+                    "reason": "invalid transaction"
+                }), 400
+
+            total_fees += tx.get("fee", 0)
+
+        allowed_reward = round(
+            block_reward() + total_fees,
+            8
         )
 
-        if coinbase_amount > max_reward + 1e-8:
-            return {"status": "rejected", "reason": "reward too high"}
+        if reward_amount > allowed_reward:
+            return jsonify({
+                "status": "rejected",
+                "reason": "reward too high"
+            }), 400
 
         # =========================
-        # 3. BLOCK VALIDATION
-        # =========================
-        if not validate_block(block, blockchain):
-            return {"status": "rejected", "reason": "invalid block"}
-
-        # =========================
-        # 4. ADD BLOCK (SAFE 🔥)
+        # CHAIN CHECK
         # =========================
         with blockchain_lock:
+
+            latest = blockchain[-1]
+
+            if block["index"] != latest["index"] + 1:
+                return jsonify({
+                    "status": "rejected",
+                    "reason": "bad index"
+                }), 400
+
+            if block["previous_hash"] != latest["hash"]:
+                return jsonify({
+                    "status": "rejected",
+                    "reason": "bad previous hash"
+                }), 400
+
+            # =========================
+            # DIFFICULTY CHECK
+            # =========================
+            expected_diff = dynamic_difficulty()
+
+            if block["difficulty"] != expected_diff:
+                return jsonify({
+                    "status": "rejected",
+                    "reason": "bad difficulty"
+                }), 400
+
+            # =========================
+            # HASH VALIDATION
+            # =========================
+            tx_str = json.dumps(
+                txs,
+                sort_keys=True
+            )
+
+            calc_hash = calculate_hash(
+                block["index"],
+                block["previous_hash"],
+                block["timestamp"],
+                block["nonce"],
+                tx_str
+            )
+
+            if calc_hash != block["hash"]:
+                return jsonify({
+                    "status": "rejected",
+                    "reason": "invalid hash"
+                }), 400
+
+            if not calc_hash.startswith(
+                "0" * block["difficulty"]
+            ):
+                return jsonify({
+                    "status": "rejected",
+                    "reason": "insufficient work"
+                }), 400
+
+            # =========================
+            # DOUBLE SPEND PROTECTION
+            # =========================
+            used_inputs = set()
+
+            for tx in txs[1:]:
+
+                for inp in tx.get("inputs", []):
+
+                    key = f'{inp["txid"]}:{inp["index"]}'
+
+                    if key in used_inputs:
+                        return jsonify({
+                            "status": "rejected",
+                            "reason": "double spend"
+                        }), 400
+
+                    used_inputs.add(key)
+
+            # =========================
+            # APPEND BLOCK
+            # =========================
             blockchain.append(block)
 
-            # 🔥 IMPORTANT FIX (NO REWARD LOSS)
+            # =========================
+            # UPDATE UTXO
+            # =========================
             safe_update_utxo(block)
 
-            # 🔥 FAILSAFE (REAL BLOCKCHAIN STYLE)
+            # =========================
+            # CLEAN MEMPOOL
+            # =========================
+            confirmed_txids = set()
+
+            for tx in txs:
+                confirmed_txids.add(tx_hash(tx))
+
+            pending_transactions[:] = [
+                tx for tx in pending_transactions
+                if tx_hash(tx) not in confirmed_txids
+            ]
+
+            # =========================
+            # FAILSAFE
+            # =========================
             if not utxo_set:
-                print("⚠️ UTXO empty → rebuilding")
+                print("⚠️ UTXO corruption detected → rebuilding")
                 rebuild_utxo()
 
-        # =========================
-        # 5. SAVE
-        # =========================
-        save_data()
+            # =========================
+            # SAVE BLOCKCHAIN
+            # =========================
+            save_data()
 
-        print(f"🚀 BLOCK ACCEPTED: {block['index']}")
+        # =========================
+        # NETWORK BROADCAST
+        # =========================
+        try:
 
-        return {"status": "accepted"}
+            p2p_broadcast({
+                "type": "inv",
+                "data": [{
+                    "type": "block",
+                    "id": block["hash"]
+                }]
+            })
+
+        except Exception as e:
+            print("Broadcast error:", e)
+
+        print(
+            f"🚀 BLOCK ACCEPTED "
+            f"#{block['index']} "
+            f"| diff={block['difficulty']}"
+        )
+
+        return jsonify({
+            "status": "accepted",
+            "height": block["index"],
+            "hash": block["hash"],
+            "reward": reward_amount,
+            "txs": len(txs)
+        })
 
     except Exception as e:
-        print("Submit error:", e)
-        return {"status": "rejected", "reason": "server error"}
+
+        import traceback
+        traceback.print_exc()
+
+        return jsonify({
+            "status": "rejected",
+            "reason": "server error",
+            "details": str(e)
+        }), 500
 
 # =========================
 # GET UTXOS
@@ -2051,124 +2411,229 @@ def block_reward():
 
     return reward
 
-
 # ==================================================
-# VERIFY TX (UTXO + SIGNATURE) - FINAL FIXED
+# VERIFY TX (BITCOIN STYLE FINAL PRO MAX 🚀)
 # ==================================================
 def verify_tx(tx, used_inputs=None):
 
     try:
 
-        # track used inputs (prevent double spend gudaha block)
+        # =========================
+        # DOUBLE SPEND TRACKER
+        # =========================
         if used_inputs is None:
             used_inputs = set()
 
         # =========================
-        # COINBASE (REWARD)
+        # BASIC STRUCTURE
+        # =========================
+        if not isinstance(tx, dict):
+            return False
+
+        # =========================
+        # COINBASE TX
         # =========================
         if tx.get("sender") == "NETWORK":
+
+            # coinbase cannot spend
             if tx.get("inputs"):
                 return False
+
+            outputs = tx.get("outputs", [])
+
+            # must have exactly 1 reward output
+            if len(outputs) != 1:
+                return False
+
+            out = outputs[0]
+
+            if "address" not in out:
+                return False
+
+            amount = out.get("amount", 0)
+
+            # invalid reward
+            if amount <= 0:
+                return False
+
+            # prevent over mint
+            if amount > block_reward() * 2:
+                return False
+
             return True
 
         # =========================
-        # BASIC CHECK
+        # REQUIRED FIELDS
         # =========================
-        if "inputs" not in tx or "outputs" not in tx:
+        required = [
+            "sender",
+            "inputs",
+            "outputs",
+            "public_key",
+            "signature"
+        ]
+
+        for field in required:
+            if field not in tx:
+                return False
+
+        # =========================
+        # TYPE CHECK
+        # =========================
+        if not isinstance(tx["inputs"], list):
             return False
 
-        if not tx["inputs"] or not tx["outputs"]:
+        if not isinstance(tx["outputs"], list):
             return False
 
-        if "public_key" not in tx or "signature" not in tx:
+        if len(tx["inputs"]) == 0:
             return False
 
-        if "sender" not in tx:
+        if len(tx["outputs"]) == 0:
             return False
 
         # =========================
-        # SIGNATURE VERIFY (HEX FIX)
+        # INPUT LIMIT
+        # =========================
+        if len(tx["inputs"]) > MAX_TOTAL_INPUTS:
+            return False
+
+        # =========================
+        # SIGNATURE VERIFY
         # =========================
         try:
-            public_key_hex = tx.get("public_key")
-            signature_hex = tx.get("signature")
 
-            # remove signature before hashing
+            public_key_hex = tx["public_key"]
+            signature_hex = tx["signature"]
+
+            public_key = bytes.fromhex(public_key_hex)
+            signature = bytes.fromhex(signature_hex)
+
+            if len(public_key) not in (64, 65):
+                return False
+
             tx_copy = dict(tx)
             tx_copy.pop("signature", None)
 
-            message = json.dumps(tx_copy, sort_keys=True).encode()
+            message = json.dumps(
+                tx_copy,
+                sort_keys=True
+            ).encode()
+
             h = hashlib.sha256(message).digest()
 
             vk = VerifyingKey.from_string(
-                bytes.fromhex(public_key_hex),
+                public_key,
                 curve=SECP256k1
             )
 
-            if not vk.verify(bytes.fromhex(signature_hex), h):
+            if not vk.verify(signature, h):
                 return False
 
         except Exception as e:
-            print("Verify error:", e)
+            print("⚠️ Signature verify failed:", e)
             return False
 
         # =========================
-        # UTXO CHECK
+        # INPUT VALIDATION
         # =========================
         input_sum = 0
-        output_sum = 0
 
         for inp in tx["inputs"]:
 
-            if "txid" not in inp or "index" not in inp:
+            if not isinstance(inp, dict):
+                return False
+
+            if "txid" not in inp:
+                return False
+
+            if "index" not in inp:
                 return False
 
             key = f'{inp["txid"]}:{inp["index"]}'
 
-            # 🚫 DOUBLE SPEND gudaha block
+            # prevent double spend gudaha block
             if key in used_inputs:
                 return False
 
             utxo = utxo_set.get(key)
 
+            # missing UTXO
             if not utxo:
                 return False
 
-            # check owner
+            # ownership check
             if utxo["address"] != tx["sender"]:
                 return False
 
-            input_sum += utxo["amount"]
+            amount = utxo.get("amount", 0)
+
+            if amount <= 0:
+                return False
+
+            input_sum += amount
+
             used_inputs.add(key)
 
         # =========================
-        # OUTPUT CHECK
+        # OUTPUT VALIDATION
         # =========================
+        output_sum = 0
+
         for out in tx["outputs"]:
 
-            if "address" not in out or "amount" not in out:
+            if not isinstance(out, dict):
                 return False
 
-            if out["amount"] <= 0:
+            if "address" not in out:
                 return False
 
-            output_sum += out["amount"]
+            if "amount" not in out:
+                return False
+
+            amount = out["amount"]
+
+            try:
+                amount = float(amount)
+            except:
+                return False
+
+            if amount <= 0:
+                return False
+
+            output_sum += amount
 
         # =========================
-        # PREVENT OVERSPEND
+        # OVERSPEND PROTECTION
         # =========================
         if output_sum > input_sum:
             return False
 
-        # fee
-        tx["fee"] = round(input_sum - output_sum, 8)
+        # =========================
+        # FEE
+        # =========================
+        fee = round(input_sum - output_sum, 8)
+
+        if fee < 0:
+            return False
+
+        tx["fee"] = fee
+
+        # =========================
+        # ANTI-DUST
+        # =========================
+        for out in tx["outputs"]:
+
+            if out["amount"] < DUST_LIMIT:
+                return False
 
         return True
 
     except Exception as e:
-        print("TX verify fatal error:", e)
-        return False
 
+        print("❌ TX verify fatal error:", e)
+
+        return False
 
 # ==================================================
 # BLOCK VALIDATION
@@ -2236,7 +2701,7 @@ def is_valid_full_chain(chain):
         if genesis.get("index") != 0:
             return False
 
-        if genesis.get("previous_hash") != "0":
+        if genesis.get("previous_hash") != "0" * 64:
             return False
 
         # =========================
@@ -3912,36 +4377,77 @@ def balance_api(address):
         "balance": bal
     })
 
-
 # ==================================================
-# RICH LIST (UTXO BASED - FIXED)
+# RICH LIST API
 # ==================================================
 @app.route("/richlist")
-def richlist():
+def richlist_api():
 
-    balances = {}
+    try:
 
-    # 🔥 UTXO BASED (REAL BALANCE)
-    for utxo in utxo_set.values():
+        rich = []
 
-        addr = utxo["address"]
-        amount = utxo["amount"]
+        # =========================
+        # BUILD FROM REAL BALANCES
+        # =========================
+        for addr, bal in address_balances.items():
 
-        balances[addr] = balances.get(addr, 0) + amount
+            try:
+                bal = round(float(bal), 8)
+            except:
+                continue
 
-    # 🔽 sort richest first
-    rich = sorted(balances.items(), key=lambda x: x[1], reverse=True)
+            # skip empty wallets
+            if bal <= 0:
+                continue
 
-    result = []
-    for addr, bal in rich[:100]:
-        if bal > 0:
-            result.append({
+            # count utxos
+            utxo_count = sum(
+                1 for u in utxo_set.values()
+                if u["address"] == addr
+            )
+
+            rich.append({
                 "address": addr,
-                "balance": round(bal, 8)
+                "balance": bal,
+                "utxos": utxo_count
             })
 
-    return jsonify(result)
+        # =========================
+        # SORT BIGGEST HOLDERS
+        # =========================
+        rich.sort(
+            key=lambda x: x["balance"],
+            reverse=True
+        )
 
+        # =========================
+        # FINAL
+        # =========================
+        final = []
+
+        for i, r in enumerate(rich[:100]):
+
+            final.append({
+                "rank": i + 1,
+                "address": r["address"],
+                "balance": r["balance"],
+                "utxos": r["utxos"]
+            })
+
+        return jsonify({
+            "total_wallets": len(address_balances),
+            "richlist": final
+        })
+
+    except Exception as e:
+
+        import traceback
+        traceback.print_exc()
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 # ==================================================
 # TRANSACTION LOOKUP
