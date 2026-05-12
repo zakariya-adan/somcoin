@@ -4759,7 +4759,7 @@ def background_init():
         time.sleep(15)
 
 # ================================================
-# 🚀 START NODE (FINAL PRO - CLEAN + DECENTRALIZED)
+# 🚀 START NODE (ULTRA PRO MAX - BITCOIN STYLE)
 # ================================================
 if __name__ == "__main__":
 
@@ -4771,10 +4771,18 @@ if __name__ == "__main__":
     # =========================
     # CONFIG
     # =========================
-    HTTP_PORT = int(os.environ.get("PORT", 9443))
-    P2P_PORT = int(os.environ.get("P2P_PORT", 9334))
+    HTTP_PORT = int(
+        os.environ.get("PORT", 9443)
+    )
 
-    print("🚀 Starting SomCoin node (PRO MODE)...")
+    P2P_PORT = int(
+        os.environ.get("P2P_PORT", 9334)
+    )
+
+    print(
+        "🚀 Starting SomCoin "
+        "(ULTRA PRO MODE)..."
+    )
 
     # =========================
     # SAFE THREAD STARTER
@@ -4786,11 +4794,15 @@ if __name__ == "__main__":
             while True:
 
                 try:
+
                     target()
 
                 except Exception as e:
 
-                    print(f"💥 {name} crashed:", e)
+                    print(
+                        f"💥 {name} crashed:",
+                        e
+                    )
 
                     time.sleep(3)
 
@@ -4804,7 +4816,7 @@ if __name__ == "__main__":
         print(f"✅ {name} started")
 
     # =========================
-    # LOAD DATA
+    # LOAD BLOCKCHAIN
     # =========================
     try:
 
@@ -4817,16 +4829,79 @@ if __name__ == "__main__":
 
     except Exception as e:
 
-        print("❌ Load error:", e)
+        print(
+            "❌ Load error:",
+            e
+        )
 
     # =========================
     # CREATE GENESIS
     # =========================
-    if not blockchain:
+    if len(blockchain) == 0:
 
-        print("⚠️ Creating genesis...")
+        print(
+            "⚠️ No blockchain found "
+            "→ creating genesis..."
+        )
 
         create_genesis()
+
+    # =========================
+    # LOAD SEEDS
+    # =========================
+    try:
+
+        load_seed_nodes()
+
+        print(
+            "✅ Seed nodes loaded"
+        )
+
+    except Exception as e:
+
+        print(
+            "❌ Seed load error:",
+            e
+        )
+
+    # =========================
+    # CONNECT SEEDS
+    # =========================
+    try:
+
+        connect_seed_nodes()
+
+        print(
+            f"✅ Connected peers "
+            f"| peers={len(p2p_peers)}"
+        )
+
+    except Exception as e:
+
+        print(
+            "❌ Peer connect error:",
+            e
+        )
+
+    # =========================
+    # REQUEST NETWORK DATA
+    # =========================
+    try:
+
+        request_peers()
+
+        request_chain()
+
+        print(
+            "✅ Requested peer data"
+        )
+
+    except Exception as e:
+
+        print(
+            "❌ Request error:",
+            e
+        )
 
     # =========================
     # 🌐 INITIAL SYNC
@@ -4836,13 +4911,45 @@ if __name__ == "__main__":
         sync_blockchain()
 
         print(
-            f"✅ Synced "
+            f"✅ Blockchain synced "
             f"| blocks={len(blockchain)-1}"
         )
 
     except Exception as e:
 
-        print("❌ Sync error:", e)
+        print(
+            "❌ Sync error:",
+            e
+        )
+
+    # =========================
+    # 🔥 SMART EMPTY CHAIN FIX
+    # =========================
+    try:
+
+        if (
+            len(blockchain) <= 1
+            and len(p2p_peers) > 0
+        ):
+
+            print(
+                "⚠️ Empty chain "
+                "→ forcing resync..."
+            )
+
+            sync_blockchain()
+
+            print(
+                f"✅ Resynced "
+                f"| blocks={len(blockchain)-1}"
+            )
+
+    except Exception as e:
+
+        print(
+            "❌ Empty-chain fix error:",
+            e
+        )
 
     # =========================
     # REBUILD UTXO
@@ -4858,7 +4965,10 @@ if __name__ == "__main__":
 
     except Exception as e:
 
-        print("❌ UTXO error:", e)
+        print(
+            "❌ UTXO error:",
+            e
+        )
 
     # =========================
     # 🌐 CORE NETWORK
@@ -4895,7 +5005,7 @@ if __name__ == "__main__":
 
     start_thread(
         auto_sync,
-        "Auto Sync (CONSENSUS)"
+        "Auto Sync"
     )
 
     start_thread(
@@ -4904,7 +5014,7 @@ if __name__ == "__main__":
     )
 
     # =========================
-    # 🧹 CLEAN SYSTEM
+    # CLEANERS
     # =========================
     start_thread(
         auto_clean_mempool,
@@ -4927,7 +5037,7 @@ if __name__ == "__main__":
     )
 
     # =========================
-    # 🧠 LIGHT RECOVERY SYSTEM
+    # 🧠 RECOVERY SYSTEM
     # =========================
     def lightweight_recovery():
 
@@ -4940,7 +5050,7 @@ if __name__ == "__main__":
 
                     print(
                         "⚠️ Low peers "
-                        "→ reconnecting seeds..."
+                        "→ reconnecting..."
                     )
 
                     connect_seed_nodes()
@@ -4949,13 +5059,13 @@ if __name__ == "__main__":
                 if len(blockchain) == 0:
 
                     print(
-                        "⚠️ Chain lost "
-                        "→ recreating..."
+                        "⚠️ Chain missing "
+                        "→ creating genesis..."
                     )
 
                     create_genesis()
 
-                # 🔥 SMART EMPTY CHAIN FIX
+                # 🔥 Bitcoin-style sync fix
                 if (
                     len(blockchain) <= 1
                     and len(p2p_peers) > 0
@@ -4963,12 +5073,12 @@ if __name__ == "__main__":
 
                     print(
                         "⚠️ Empty chain "
-                        "→ syncing..."
+                        "→ syncing network..."
                     )
 
                     sync_blockchain()
 
-                # 🔥 EMPTY UTXO FIX
+                # 🔥 broken utxo fix
                 if (
                     len(utxo_set) == 0
                     and len(blockchain) > 1
@@ -4983,7 +5093,10 @@ if __name__ == "__main__":
 
             except Exception as e:
 
-                print("Recovery error:", e)
+                print(
+                    "Recovery error:",
+                    e
+                )
 
             time.sleep(15)
 
@@ -5005,7 +5118,9 @@ if __name__ == "__main__":
         if not miner_address:
             return
 
-        print("⛏ Smart miner started")
+        print(
+            "⛏ Smart miner started"
+        )
 
         while True:
 
@@ -5019,7 +5134,11 @@ if __name__ == "__main__":
 
                 with mempool_lock:
 
-                    if len(pending_transactions) == 0:
+                    if (
+                        len(
+                            pending_transactions
+                        ) == 0
+                    ):
 
                         time.sleep(2)
 
@@ -5029,23 +5148,31 @@ if __name__ == "__main__":
                     f"/mine/{miner_address}"
                 ):
 
-                    res = mine(miner_address)
+                    res = mine(
+                        miner_address
+                    )
 
                 data = (
                     res.get_json()
                     if res else None
                 )
 
-                if data and "block" in data:
+                if (
+                    data
+                    and "block" in data
+                ):
 
                     print(
-                        f"✅ Block mined: "
-                        f"{data['block']}"
+                        f"✅ Block mined "
+                        f"| height={data['block']}"
                     )
 
             except Exception as e:
 
-                print("Miner error:", e)
+                print(
+                    "Miner error:",
+                    e
+                )
 
             time.sleep(1)
 
@@ -5060,45 +5187,38 @@ if __name__ == "__main__":
         )
 
     # =========================
-    # 🌍 CONNECT NETWORK
+    # FINAL STATUS
     # =========================
-    try:
-
-        load_seed_nodes()
-
-        connect_seed_nodes()
-
-        request_peers()
-
-        request_chain()
-
-        sync_blockchain()
-
-        print(
-            "🌐 Network connected & synced"
-        )
-
-    except Exception as e:
-
-        print("❌ Network error:", e)
-
-    # =========================
-    # 🚀 FINAL START
-    # =========================
-    print("🔥 SomCoin FULLY READY")
-
-    print(f"🌐 HTTP: {HTTP_PORT}")
-
-    print(f"📡 P2P: {P2P_PORT}")
-
     print(
-        f"⛓ Blocks: {len(blockchain)-1}"
+        "🔥 SomCoin FULLY READY"
     )
 
     print(
-        f"👥 Peers: {len(p2p_peers)}"
+        f"🌐 HTTP: {HTTP_PORT}"
     )
 
+    print(
+        f"📡 P2P: {P2P_PORT}"
+    )
+
+    print(
+        f"⛓ Blocks: "
+        f"{len(blockchain)-1}"
+    )
+
+    print(
+        f"👥 Peers: "
+        f"{len(p2p_peers)}"
+    )
+
+    print(
+        f"💰 UTXOs: "
+        f"{len(utxo_set)}"
+    )
+
+    # =========================
+    # START API
+    # =========================
     app.run(
         host="0.0.0.0",
         port=HTTP_PORT,
