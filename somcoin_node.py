@@ -5295,7 +5295,7 @@ if __name__ == "__main__":
     # =========================
     try:
 
-        sync_blockchain()
+        # sync_blockchain()
 
         print(
             f"✅ Blockchain synced "
@@ -5324,7 +5324,7 @@ if __name__ == "__main__":
                 "→ forcing resync..."
             )
 
-            sync_blockchain()
+            # sync_blockchain()
 
             print(
                 f"✅ Resynced "
@@ -5463,7 +5463,7 @@ if __name__ == "__main__":
                         "→ syncing network..."
                     )
 
-                    sync_blockchain()
+                    # sync_blockchain()
 
                 # 🔥 broken utxo fix
                 if (
