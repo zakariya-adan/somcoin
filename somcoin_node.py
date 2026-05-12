@@ -4585,32 +4585,51 @@ def get_block(height):
     else:
         return jsonify({"error": "block not found"}), 404
 
-# =========================
-# 🚀 GET CHAIN (COMPRESSED)
-# =========================
+# ==================================================
+# 🚀 GET CHAIN
+# (FAST + FULL SYNC SUPPORT)
+# ==================================================
 @app.route("/chain")
 def get_chain():
 
     try:
 
+        # =========================
+        # LIMIT
+        # =========================
         limit = request.args.get(
             "limit",
-            default=1000,
             type=int
         )
 
-        if limit < 1:
-            limit = 1
+        # =========================
+        # FULL CHAIN
+        # =========================
+        if not limit or limit <= 0:
 
-        if limit > 5000:
-            limit = 5000
+            return jsonify({
+                "chain": blockchain,
+                "count": len(blockchain),
+                "height": len(blockchain) - 1
+            })
 
-        chain_slice = blockchain[-limit:]
+        # =========================
+        # SAFE LIMIT
+        # =========================
+        MAX_LIMIT = 50000
+
+        if limit > MAX_LIMIT:
+            limit = MAX_LIMIT
+
+        # =========================
+        # LAST BLOCKS
+        # =========================
+        data = blockchain[-limit:]
 
         return jsonify({
-            "height": len(blockchain) - 1,
-            "count": len(chain_slice),
-            "chain": chain_slice
+            "chain": data,
+            "count": len(data),
+            "height": len(blockchain) - 1
         })
 
     except Exception as e:
