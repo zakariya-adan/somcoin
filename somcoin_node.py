@@ -2777,40 +2777,165 @@ def better_chain(new_chain):
     return False
 
 # =========================
-# 🚀 REPLACE CHAIN (PRO VERSION)
+# 🚀 REPLACE CHAIN
+# BITCOIN STYLE (ULTRA PRO MAX)
 # =========================
 def replace_chain(new_chain):
 
     global blockchain
+    global pending_transactions
 
-    if not isinstance(new_chain, list) or len(new_chain) == 0:
-        return
+    try:
 
-    if not is_valid_full_chain(new_chain):
-        print("❌ Invalid chain rejected")
-        return
+        # =========================
+        # BASIC VALIDATION
+        # =========================
+        if not isinstance(new_chain, list):
+            print("❌ Reject: chain not list")
+            return False
 
-    # =========================
-    # 🔥 WORK COMPARISON
-    # =========================
-    local_work = chain_work(blockchain)
-    new_work = chain_work(new_chain)
+        if len(new_chain) == 0:
+            print("❌ Reject: empty chain")
+            return False
 
-    print(f"⚖️ Work compare → local:{local_work} | new:{new_work}")
+        if len(new_chain) <= len(blockchain):
+            print(
+                f"ℹ️ Ignore smaller chain "
+                f"| local={len(blockchain)} "
+                f"| new={len(new_chain)}"
+            )
+            return False
 
-    # =========================
-    # ✅ REPLACE ONLY IF STRONGER
-    # =========================
-    if better_chain(new_chain):
-        print("🔥 Replacing with stronger chain")
+        # =========================
+        # VALIDATE FULL CHAIN
+        # =========================
+        print(
+            f"🔍 Validating chain "
+            f"| blocks={len(new_chain)}"
+        )
 
+        if not is_valid_full_chain(new_chain):
+
+            print("❌ Invalid chain rejected")
+
+            return False
+
+        # =========================
+        # WORK COMPARISON
+        # =========================
+        local_work = chain_work(blockchain)
+        new_work = chain_work(new_chain)
+
+        print(
+            f"⚖️ Chain work "
+            f"| local={local_work} "
+            f"| new={new_work}"
+        )
+
+        # =========================
+        # LONGEST + STRONGEST
+        # =========================
+        stronger = False
+
+        if new_work > local_work:
+            stronger = True
+
+        elif len(new_chain) > len(blockchain):
+            stronger = True
+
+        if not stronger:
+
+            print("ℹ️ Weaker chain ignored")
+
+            return False
+
+        # =========================
+        # SAFE BACKUP
+        # =========================
+        old_chain = blockchain.copy()
+
+        print(
+            f"🌐 Replacing blockchain "
+            f"{len(blockchain)} -> {len(new_chain)}"
+        )
+
+        # =========================
+        # REPLACE CHAIN
+        # =========================
         blockchain = new_chain
+
+        # =========================
+        # REBUILD STATE
+        # =========================
         rebuild_utxo()
+
+        # =========================
+        # CLEAN MEMPOOL
+        # remove confirmed txs
+        # =========================
+        confirmed = set()
+
+        for block in blockchain:
+
+            for tx in block.get("transactions", []):
+
+                try:
+                    confirmed.add(tx_hash(tx))
+                except:
+                    continue
+
+        pending_transactions = [
+            tx for tx in pending_transactions
+            if tx_hash(tx) not in confirmed
+        ]
+
+        # =========================
+        # FAILSAFE
+        # =========================
+        if len(utxo_set) == 0 and len(blockchain) > 1:
+
+            print("⚠️ Empty UTXO detected")
+
+            rebuild_utxo()
+
+        # =========================
+        # SAVE
+        # =========================
         save_data()
 
-        print("✅ Chain replaced:", len(blockchain))
-    else:
-        print("ℹ️ Ignored weaker chain")
+        print(
+            f"✅ Chain synced successfully "
+            f"| height={len(blockchain)-1} "
+            f"| utxos={len(utxo_set)}"
+        )
+
+        return True
+
+    except Exception as e:
+
+        print("❌ Replace chain fatal error:", e)
+
+        # =========================
+        # RECOVERY
+        # =========================
+        try:
+
+            blockchain = old_chain
+
+            rebuild_utxo()
+
+            save_data()
+
+            print("🛠 Chain recovery completed")
+
+        except Exception as recovery_error:
+
+            print(
+                "💥 Recovery failed:",
+                recovery_error
+            )
+
+        return False
 
 # ==================================================
 # REQUEST PEERS (FINAL SECURE)
