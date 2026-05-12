@@ -4780,133 +4780,324 @@ if __name__ == "__main__":
     # SAFE THREAD STARTER
     # =========================
     def start_thread(target, name):
+
         def wrapper():
+
             while True:
+
                 try:
                     target()
+
                 except Exception as e:
+
                     print(f"💥 {name} crashed:", e)
+
                     time.sleep(3)
 
-        t = threading.Thread(target=wrapper, daemon=True)
+        t = threading.Thread(
+            target=wrapper,
+            daemon=True
+        )
+
         t.start()
+
         print(f"✅ {name} started")
 
     # =========================
     # LOAD DATA
     # =========================
     try:
+
         load_data()
+
+        print(
+            f"✅ Blockchain loaded "
+            f"| blocks={len(blockchain)-1}"
+        )
+
     except Exception as e:
+
         print("❌ Load error:", e)
 
+    # =========================
+    # CREATE GENESIS
+    # =========================
     if not blockchain:
+
         print("⚠️ Creating genesis...")
+
         create_genesis()
 
+    # =========================
+    # 🌐 INITIAL SYNC
+    # =========================
     try:
-        rebuild_utxo()
+
+        sync_blockchain()
+
+        print(
+            f"✅ Synced "
+            f"| blocks={len(blockchain)-1}"
+        )
+
     except Exception as e:
+
+        print("❌ Sync error:", e)
+
+    # =========================
+    # REBUILD UTXO
+    # =========================
+    try:
+
+        rebuild_utxo()
+
+        print(
+            f"✅ UTXO rebuilt "
+            f"| utxos={len(utxo_set)}"
+        )
+
+    except Exception as e:
+
         print("❌ UTXO error:", e)
 
     # =========================
-    # 🌐 CORE NETWORK (ONLY IMPORTANT 🔥)
+    # 🌐 CORE NETWORK
     # =========================
-    start_thread(p2p_server, "P2P Server")
-    start_thread(dns_bootstrap, "DNS Discovery")
+    start_thread(
+        p2p_server,
+        "P2P Server"
+    )
 
-    start_thread(smart_discovery, "Peer Discovery")
-    start_thread(ensure_minimum_peers, "Peer Recovery")
-    start_thread(rotate_peers, "Peer Rotation")
-    start_thread(auto_seed_control, "Auto Seed Control")
+    start_thread(
+        dns_bootstrap,
+        "DNS Discovery"
+    )
 
-    start_thread(auto_sync, "Auto Sync (CONSENSUS)")
-    start_thread(ping_peers, "Peer KeepAlive")
+    start_thread(
+        smart_discovery,
+        "Peer Discovery"
+    )
+
+    start_thread(
+        ensure_minimum_peers,
+        "Peer Recovery"
+    )
+
+    start_thread(
+        rotate_peers,
+        "Peer Rotation"
+    )
+
+    start_thread(
+        auto_seed_control,
+        "Auto Seed Control"
+    )
+
+    start_thread(
+        auto_sync,
+        "Auto Sync (CONSENSUS)"
+    )
+
+    start_thread(
+        ping_peers,
+        "Peer KeepAlive"
+    )
 
     # =========================
     # 🧹 CLEAN SYSTEM
     # =========================
-    start_thread(auto_clean_mempool, "Mempool Cleaner")
-    start_thread(clean_bad_peers, "Bad Peer Cleaner")
-    start_thread(clean_peer_ips, "Peer IP Cleaner")
-    start_thread(clean_dead_peers, "Dead Peer Cleaner")
+    start_thread(
+        auto_clean_mempool,
+        "Mempool Cleaner"
+    )
+
+    start_thread(
+        clean_bad_peers,
+        "Bad Peer Cleaner"
+    )
+
+    start_thread(
+        clean_peer_ips,
+        "Peer IP Cleaner"
+    )
+
+    start_thread(
+        clean_dead_peers,
+        "Dead Peer Cleaner"
+    )
 
     # =========================
     # 🧠 LIGHT RECOVERY SYSTEM
     # =========================
     def lightweight_recovery():
+
         while True:
+
             try:
+
+                # reconnect peers
                 if len(p2p_peers) < 3:
-                    print("⚠️ Low peers → reconnecting seeds...")
+
+                    print(
+                        "⚠️ Low peers "
+                        "→ reconnecting seeds..."
+                    )
+
                     connect_seed_nodes()
 
+                # recreate genesis
                 if len(blockchain) == 0:
-                    print("⚠️ Chain lost → recreating...")
+
+                    print(
+                        "⚠️ Chain lost "
+                        "→ recreating..."
+                    )
+
                     create_genesis()
 
+                # 🔥 SMART EMPTY CHAIN FIX
+                if (
+                    len(blockchain) <= 1
+                    and len(p2p_peers) > 0
+                ):
+
+                    print(
+                        "⚠️ Empty chain "
+                        "→ syncing..."
+                    )
+
+                    sync_blockchain()
+
+                # 🔥 EMPTY UTXO FIX
+                if (
+                    len(utxo_set) == 0
+                    and len(blockchain) > 1
+                ):
+
+                    print(
+                        "⚠️ Empty UTXO "
+                        "→ rebuilding..."
+                    )
+
+                    rebuild_utxo()
+
             except Exception as e:
+
                 print("Recovery error:", e)
 
             time.sleep(15)
 
-    start_thread(lightweight_recovery, "Recovery")
+    start_thread(
+        lightweight_recovery,
+        "Recovery"
+    )
 
     # =========================
-    # ⛏ SMART MINER (OPTIONAL)
+    # ⛏ SMART MINER
     # =========================
     def smart_miner():
-        miner_address = os.getenv("MINER_ADDR", "")
+
+        miner_address = os.getenv(
+            "MINER_ADDR",
+            ""
+        )
+
         if not miner_address:
-            return  # ❗ skip haddii address la'aan
+            return
 
         print("⛏ Smart miner started")
 
         while True:
+
             try:
+
                 if len(p2p_peers) < 2:
+
                     time.sleep(5)
+
                     continue
 
                 with mempool_lock:
+
                     if len(pending_transactions) == 0:
+
                         time.sleep(2)
+
                         continue
 
-                with app.test_request_context(f"/mine/{miner_address}"):
+                with app.test_request_context(
+                    f"/mine/{miner_address}"
+                ):
+
                     res = mine(miner_address)
 
-                data = res.get_json() if res else None
+                data = (
+                    res.get_json()
+                    if res else None
+                )
 
                 if data and "block" in data:
-                    print(f"✅ Block mined: {data['block']}")
+
+                    print(
+                        f"✅ Block mined: "
+                        f"{data['block']}"
+                    )
 
             except Exception as e:
+
                 print("Miner error:", e)
 
             time.sleep(1)
 
-    if os.getenv("AUTO_MINE", "false") == "true":
-        start_thread(smart_miner, "Smart Miner")
+    if os.getenv(
+        "AUTO_MINE",
+        "false"
+    ) == "true":
+
+        start_thread(
+            smart_miner,
+            "Smart Miner"
+        )
 
     # =========================
     # 🌍 CONNECT NETWORK
     # =========================
     try:
+
         load_seed_nodes()
+
         connect_seed_nodes()
+
         request_peers()
+
         request_chain()
-        print("🌐 Network connected & synced")
+
+        sync_blockchain()
+
+        print(
+            "🌐 Network connected & synced"
+        )
+
     except Exception as e:
+
         print("❌ Network error:", e)
 
     # =========================
     # 🚀 FINAL START
     # =========================
     print("🔥 SomCoin FULLY READY")
-    print("🌐 HTTP:", HTTP_PORT)
-    print("📡 P2P:", P2P_PORT)
+
+    print(f"🌐 HTTP: {HTTP_PORT}")
+
+    print(f"📡 P2P: {P2P_PORT}")
+
+    print(
+        f"⛓ Blocks: {len(blockchain)-1}"
+    )
+
+    print(
+        f"👥 Peers: {len(p2p_peers)}"
+    )
 
     app.run(
         host="0.0.0.0",
