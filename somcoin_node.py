@@ -11,6 +11,7 @@ import socket
 import threading
 import multiprocessing
 import random
+import shutil
 
 from ecdsa import SigningKey, VerifyingKey, SECP256k1, BadSignatureError
 
@@ -44,7 +45,7 @@ MIN_DIFFICULTY = 4
 # =========================
 def get_new_difficulty(chain):
     if len(chain) < 10:
-        return 3
+        return MIN_DIFFICULTY
 
     last_block = chain[-1]
     prev_block = chain[-10]
@@ -2897,20 +2898,20 @@ def block_reward():
     return reward
 
 # ==================================================
-# VERIFY TX (BITCOIN STYLE FINAL PRO MAX 🚀)
+# VERIFY TX (ULTRA SECURE FINAL 🚀)
 # ==================================================
 def verify_tx(tx, used_inputs=None):
 
     try:
 
         # =========================
-        # DOUBLE SPEND TRACKER
+        # INIT
         # =========================
         if used_inputs is None:
             used_inputs = set()
 
         # =========================
-        # BASIC STRUCTURE
+        # BASIC TYPE
         # =========================
         if not isinstance(tx, dict):
             return False
@@ -2920,28 +2921,34 @@ def verify_tx(tx, used_inputs=None):
         # =========================
         if tx.get("sender") == "NETWORK":
 
-            # coinbase cannot spend
+            # no inputs
             if tx.get("inputs"):
                 return False
 
             outputs = tx.get("outputs", [])
 
-            # must have exactly 1 reward output
+            # must have 1 output
             if len(outputs) != 1:
                 return False
 
             out = outputs[0]
 
+            if not isinstance(out, dict):
+                return False
+
             if "address" not in out:
                 return False
 
-            amount = out.get("amount", 0)
+            if "amount" not in out:
+                return False
+
+            amount = float(out["amount"])
 
             # invalid reward
             if amount <= 0:
                 return False
 
-            # prevent over mint
+            # anti overmint
             if amount > block_reward() * 2:
                 return False
 
@@ -2962,8 +2969,22 @@ def verify_tx(tx, used_inputs=None):
             if field not in tx:
                 return False
 
+        sender = tx["sender"]
+
         # =========================
-        # TYPE CHECK
+        # ADDRESS CHECK
+        # =========================
+        if not isinstance(sender, str):
+            return False
+
+        if not sender.startswith("SOM"):
+            return False
+
+        if len(sender) < 10:
+            return False
+
+        # =========================
+        # INPUTS / OUTPUTS TYPE
         # =========================
         if not isinstance(tx["inputs"], list):
             return False
@@ -2994,9 +3015,11 @@ def verify_tx(tx, used_inputs=None):
             public_key = bytes.fromhex(public_key_hex)
             signature = bytes.fromhex(signature_hex)
 
+            # valid key sizes
             if len(public_key) not in (64, 65):
                 return False
 
+            # rebuild tx without signature
             tx_copy = dict(tx)
             tx_copy.pop("signature", None)
 
@@ -3012,17 +3035,38 @@ def verify_tx(tx, used_inputs=None):
                 curve=SECP256k1
             )
 
+            # verify signature
             if not vk.verify(signature, h):
                 return False
 
+            # =========================
+            # 🔥 WALLET OWNERSHIP FIX
+            # =========================
+            derived_address = (
+                "SOM" +
+                hashlib.sha256(
+                    public_key_hex.encode()
+                ).hexdigest()[:40]
+            )
+
+            if derived_address != sender:
+                print("⚠️ Fake sender detected")
+                return False
+
         except Exception as e:
-            print("⚠️ Signature verify failed:", e)
+
+            print(
+                "⚠️ Signature verify failed:",
+                e
+            )
+
             return False
 
         # =========================
         # INPUT VALIDATION
         # =========================
         input_sum = 0
+        local_inputs = set()
 
         for inp in tx["inputs"]:
 
@@ -3035,23 +3079,41 @@ def verify_tx(tx, used_inputs=None):
             if "index" not in inp:
                 return False
 
-            key = f'{inp["txid"]}:{inp["index"]}'
+            txid = inp["txid"]
+            index = inp["index"]
 
-            # prevent double spend gudaha block
+            # type checks
+            if not isinstance(txid, str):
+                return False
+
+            if not isinstance(index, int):
+                return False
+
+            key = f"{txid}:{index}"
+
+            # duplicate input gudaha tx
+            if key in local_inputs:
+                return False
+
+            local_inputs.add(key)
+
+            # double spend gudaha block
             if key in used_inputs:
                 return False
 
+            # UTXO lookup
             utxo = utxo_set.get(key)
 
-            # missing UTXO
             if not utxo:
                 return False
 
-            # ownership check
-            if utxo["address"] != tx["sender"]:
+            # ownership
+            if utxo["address"] != sender:
                 return False
 
-            amount = utxo.get("amount", 0)
+            amount = float(
+                utxo.get("amount", 0)
+            )
 
             if amount <= 0:
                 return False
@@ -3076,14 +3138,25 @@ def verify_tx(tx, used_inputs=None):
             if "amount" not in out:
                 return False
 
-            amount = out["amount"]
+            address = out["address"]
+
+            if not isinstance(address, str):
+                return False
+
+            if not address.startswith("SOM"):
+                return False
 
             try:
-                amount = float(amount)
+                amount = float(out["amount"])
             except:
                 return False
 
+            # invalid amount
             if amount <= 0:
+                return False
+
+            # anti dust
+            if amount < DUST_LIMIT:
                 return False
 
             output_sum += amount
@@ -3095,28 +3168,33 @@ def verify_tx(tx, used_inputs=None):
             return False
 
         # =========================
-        # FEE
+        # CALCULATE FEE
         # =========================
-        fee = round(input_sum - output_sum, 8)
+        fee = round(
+            input_sum - output_sum,
+            8
+        )
 
         if fee < 0:
+            return False
+
+        # anti insane fee
+        if fee > input_sum:
             return False
 
         tx["fee"] = fee
 
         # =========================
-        # ANTI-DUST
+        # FINAL
         # =========================
-        for out in tx["outputs"]:
-
-            if out["amount"] < DUST_LIMIT:
-                return False
-
         return True
 
     except Exception as e:
 
-        print("❌ TX verify fatal error:", e)
+        print(
+            "❌ TX verify fatal error:",
+            e
+        )
 
         return False
 
@@ -4903,26 +4981,42 @@ MINE_COOLDOWN = 1.5   # anti spam
 
 
 # ==================================================
-# MINE (REAL + CLEAN + PRO 🚀)
+# MINE (ULTRA SECURE FINAL PRO MAX 🚀)
 # ==================================================
 
 @app.route("/mine/<addr>")
 def mine(addr):
 
-    global pending_transactions, last_mine_time
+    global pending_transactions
+    global last_mine_time
 
     # =========================================
-    # VALIDATION
+    # ADDRESS VALIDATION
     # =========================================
-    if not addr.startswith("SOM") or len(addr) < 10:
+    if not isinstance(addr, str):
+        return jsonify({"error": "invalid address"})
+
+    if not addr.startswith("SOM"):
+        return jsonify({"error": "invalid address"})
+
+    if len(addr) < 10:
         return jsonify({"error": "invalid address"})
 
     # =========================================
     # RATE LIMIT
     # =========================================
     now = time.time()
+
     if now - last_mine_time < MINE_COOLDOWN:
-        return jsonify({"status": "cooldown"})
+        return jsonify({
+            "status": "cooldown",
+            "wait": round(
+                MINE_COOLDOWN - (
+                    now - last_mine_time
+                ),
+                2
+            )
+        })
 
     last_mine_time = now
 
@@ -4930,9 +5024,13 @@ def mine(addr):
     # SINGLE MINER LOCK
     # =========================================
     if not mining_lock.acquire(blocking=False):
-        return jsonify({"status": "already mining"})
+
+        return jsonify({
+            "status": "already mining"
+        })
 
     try:
+
         # =========================================
         # GENESIS CHECK
         # =========================================
@@ -4940,9 +5038,10 @@ def mine(addr):
             create_genesis()
 
         # =========================================
-        # 🛑 MAX SUPPLY STOP (🔥 muhiim)
+        # MAX SUPPLY STOP
         # =========================================
         if block_reward() <= 0:
+
             return jsonify({
                 "status": "max supply reached",
                 "supply": total_supply()
@@ -4952,77 +5051,200 @@ def mine(addr):
         # MEMPOOL SNAPSHOT
         # =========================================
         with mempool_lock:
-            mempool_snapshot = list(pending_transactions)
+            mempool_snapshot = list(
+                pending_transactions
+            )
 
         # =========================================
-        # SELECT TX (FEE PRIORITY)
+        # REMOVE DUPLICATES
+        # =========================================
+        seen_txids = set()
+        clean_mempool = []
+
+        for tx in mempool_snapshot:
+
+            txid = calculate_txid(tx)
+
+            if txid in seen_txids:
+                continue
+
+            seen_txids.add(txid)
+            clean_mempool.append(tx)
+
+        # =========================================
+        # TX PRIORITY (HIGH FEE)
+        # =========================================
+        sorted_txs = sorted(
+            clean_mempool,
+            key=lambda x: (
+                float(x.get("fee", 0)),
+                x.get("timestamp", 0)
+            ),
+            reverse=True
+        )
+
+        # =========================================
+        # VERIFY TXS
         # =========================================
         valid_txs = []
+        used_inputs = set()
+        total_block_size = 0
 
-        for tx in sorted(mempool_snapshot, key=lambda x: x.get("fee", 0), reverse=True):
+        for tx in sorted_txs:
+
             try:
+
+                # skip fake coinbase
                 if tx.get("sender") == "NETWORK":
                     continue
 
-                if verify_tx(tx):
-                    valid_txs.append(tx)
+                tx_size = len(
+                    json.dumps(tx).encode()
+                )
 
-                if len(valid_txs) >= MAX_TX_PER_BLOCK:
+                # anti huge tx
+                if tx_size > MAX_TX_SIZE:
+                    continue
+
+                # max block size
+                if (
+                    total_block_size + tx_size
+                    > MAX_BLOCK_SIZE
+                ):
+                    continue
+
+                # verify tx
+                if verify_tx(
+                    tx,
+                    used_inputs
+                ):
+
+                    valid_txs.append(tx)
+                    total_block_size += tx_size
+
+                # tx limit
+                if (
+                    len(valid_txs)
+                    >= MAX_TX_PER_BLOCK
+                ):
                     break
 
-            except:
+            except Exception as e:
+
+                print(
+                    "⚠️ TX skipped:",
+                    e
+                )
+
                 continue
 
         # =========================================
-        # REWARD (BLOCK + FEES)
+        # TOTAL FEES
         # =========================================
-        total_fees = sum(float(tx.get("fee", 0)) for tx in valid_txs)
+        total_fees = round(
+            sum(
+                float(
+                    tx.get("fee", 0)
+                )
+                for tx in valid_txs
+            ),
+            8
+        )
 
+        # =========================================
+        # REWARD
+        # =========================================
         base_reward = block_reward()
-        reward_amount = round(base_reward + total_fees, 8)
 
-        # safety check
+        reward_amount = round(
+            base_reward + total_fees,
+            8
+        )
+
+        # safety
         if reward_amount <= 0:
-            return jsonify({"status": "no reward"})
+
+            return jsonify({
+                "status": "invalid reward"
+            })
 
         # =========================================
         # COINBASE TX
         # =========================================
         coinbase_tx = {
+
             "sender": "NETWORK",
+
             "inputs": [],
+
             "outputs": [{
                 "address": addr,
                 "amount": reward_amount
             }],
-            "timestamp": time.time()
+
+            "timestamp": time.time(),
+
+            "txid": hashlib.sha256(
+                f"{addr}{time.time()}{random.random()}".encode()
+            ).hexdigest()
         }
 
-        block_txs = [coinbase_tx] + valid_txs
+        # =========================================
+        # BUILD TX LIST
+        # =========================================
+        block_txs = (
+            [coinbase_tx] +
+            valid_txs
+        )
 
         # =========================================
         # CHAIN STATE
         # =========================================
         with blockchain_lock:
-            last_block = blockchain[-1]
-            index = last_block["index"] + 1
-            prev_hash = last_block["hash"]
-            difficulty = dynamic_difficulty()
 
-        print(f"⛏ Mining block {index} | diff={difficulty}")
+            last_block = blockchain[-1]
+
+            index = (
+                last_block["index"] + 1
+            )
+
+            prev_hash = (
+                last_block["hash"]
+            )
+
+            difficulty = (
+                dynamic_difficulty()
+            )
+
+        print(
+            f"⛏ Mining block "
+            f"{index} "
+            f"| diff={difficulty}"
+        )
 
         # =========================================
         # MULTI CPU MINING
         # =========================================
         cpu_count = multiprocessing.cpu_count()
 
-        with multiprocessing.Pool(cpu_count) as pool:
+        with multiprocessing.Pool(
+            cpu_count
+        ) as pool:
 
             jobs = [
+
                 pool.apply_async(
                     mine_worker,
-                    (i, cpu_count, index, prev_hash, block_txs, difficulty)
+                    (
+                        i,
+                        cpu_count,
+                        index,
+                        prev_hash,
+                        block_txs,
+                        difficulty
+                    )
                 )
+
                 for i in range(cpu_count)
             ]
 
@@ -5032,22 +5254,47 @@ def mine(addr):
 
             while True:
 
+                # =====================================
+                # CHAIN REORG CHECK
+                # =====================================
                 with blockchain_lock:
-                    if blockchain[-1]["hash"] != prev_hash:
+
+                    if (
+                        blockchain[-1]["hash"]
+                        != prev_hash
+                    ):
+
                         pool.terminate()
                         pool.join()
-                        return jsonify({"error": "chain changed"})
 
+                        return jsonify({
+                            "error": "chain changed"
+                        })
+
+                # =====================================
+                # CHECK RESULTS
+                # =====================================
                 for job in jobs:
+
                     if job.ready():
+
                         result = job.get()
+
                         if result:
-                            nonce, timestamp, mined_hash = result
+
+                            (
+                                nonce,
+                                timestamp,
+                                mined_hash
+                            ) = result
+
                             break
 
                 if nonce is not None:
+
                     pool.terminate()
                     pool.join()
+
                     break
 
                 time.sleep(0.01)
@@ -5055,33 +5302,80 @@ def mine(addr):
         # =========================================
         # BUILD BLOCK
         # =========================================
+        merkle_root = calculate_merkle_root(
+            block_txs
+        )
+
         block = {
+
             "index": index,
+
             "timestamp": timestamp,
+
             "transactions": block_txs,
+
             "nonce": nonce,
+
             "previous_hash": prev_hash,
+
             "difficulty": difficulty,
+
+            "merkle_root": merkle_root,
+
+            "miner": addr,
+
             "hash": mined_hash
         }
 
         # =========================================
-        # VALIDATE + ADD
+        # FINAL VALIDATION
         # =========================================
         with blockchain_lock:
 
-            if not validate_block(block, blockchain):
-                return jsonify({"error": "invalid block"})
+            # recheck chain
+            if (
+                blockchain[-1]["hash"]
+                != prev_hash
+            ):
 
+                return jsonify({
+                    "error": "stale block"
+                })
+
+            # validate block
+            if not validate_block(
+                block,
+                blockchain
+            ):
+
+                return jsonify({
+                    "error": "invalid block"
+                })
+
+            # add block
             blockchain.append(block)
+
+            # update utxo
             update_utxo(block)
 
         # =========================================
         # CLEAN MEMPOOL
         # =========================================
         with mempool_lock:
+
+            valid_txids = set(
+                calculate_txid(tx)
+                for tx in valid_txs
+            )
+
             pending_transactions[:] = [
-                tx for tx in pending_transactions if tx not in valid_txs
+
+                tx
+
+                for tx in pending_transactions
+
+                if calculate_txid(tx)
+                not in valid_txids
             ]
 
         # =========================================
@@ -5093,28 +5387,65 @@ def mine(addr):
         # BROADCAST
         # =========================================
         try:
+
             p2p_broadcast({
+
                 "type": "block",
+
                 "data": block
             })
+
         except Exception as e:
-            print("⚠️ Broadcast error:", e)
 
-        print(f"✅ BLOCK MINED: {index} | {mined_hash}")
+            print(
+                "⚠️ Broadcast error:",
+                e
+            )
 
+        # =========================================
+        # LOG
+        # =========================================
+        print(
+            f"✅ BLOCK MINED: "
+            f"{index} "
+            f"| {mined_hash}"
+        )
+
+        # =========================================
+        # RESPONSE
+        # =========================================
         return jsonify({
+
             "status": "block mined",
+
             "block": index,
+
             "hash": mined_hash,
+
             "reward": reward_amount,
-            "txs": len(block_txs)
+
+            "fees": total_fees,
+
+            "difficulty": difficulty,
+
+            "txs": len(block_txs),
+
+            "size": total_block_size
         })
 
     except Exception as e:
-        print("❌ Mining error:", e)
-        return jsonify({"error": str(e)})
+
+        print(
+            "❌ Mining error:",
+            e
+        )
+
+        return jsonify({
+            "error": str(e)
+        })
 
     finally:
+
         if mining_lock.locked():
             mining_lock.release()
 
@@ -5486,32 +5817,164 @@ def fee_api():
         "mempool_size": len(pending_transactions)
     })
 
+# ==================================================
+# GET JOB (STRATUM READY + SECURE + PRO 🚀)
+# ==================================================
+
 @app.route("/get_job")
 def get_job():
+
     try:
-        template = requests.get("http://127.0.0.1:9443/get_block_template").json()
+
+        # =========================================
+        # GET TEMPLATE
+        # =========================================
+        template = requests.get(
+            "http://127.0.0.1:9443/get_block_template",
+            timeout=5
+        ).json()
+
+        # =========================================
+        # TEMPLATE CHECK
+        # =========================================
+        if not isinstance(template, dict):
+
+            return jsonify({
+                "error": "invalid template"
+            })
 
         if "error" in template:
-            return {"error": "no template"}
 
+            return jsonify({
+                "error": template["error"]
+            })
+
+        # =========================================
+        # REQUIRED FIELDS
+        # =========================================
+        required = [
+
+            "index",
+            "prev_hash",
+            "timestamp",
+            "difficulty",
+            "merkle_root"
+        ]
+
+        for field in required:
+
+            if field not in template:
+
+                return jsonify({
+                    "error": f"missing {field}"
+                })
+
+        # =========================================
+        # BUILD HEADER
+        # =========================================
         global block_header
 
         block_header = (
+
             str(template["index"]) +
-            template["prev_hash"] +
+
+            str(template["prev_hash"]) +
+
             str(template["timestamp"]) +
-            template["merkle_root"]
+
+            str(template["merkle_root"])
         )
 
+        # =========================================
+        # HEADER HASH
+        # =========================================
+        header_hash = hashlib.sha256(
+            block_header.encode()
+        ).hexdigest()
+
+        # =========================================
+        # JOB ID
+        # =========================================
+        job_id = hashlib.sha256(
+
+            f"{block_header}{time.time()}".encode()
+
+        ).hexdigest()[:16]
+
+        # =========================================
+        # STORE ACTIVE JOB
+        # =========================================
+        global current_jobs
+
+        current_jobs[job_id] = {
+
+            "created": time.time(),
+
+            "template": template,
+
+            "header": block_header,
+
+            "header_hash": header_hash
+        }
+
+        # =========================================
+        # CLEAN OLD JOBS
+        # =========================================
+        now = time.time()
+
+        expired = []
+
+        for jid, data in current_jobs.items():
+
+            if now - data["created"] > 120:
+                expired.append(jid)
+
+        for jid in expired:
+            del current_jobs[jid]
+
+        # =========================================
+        # RESPONSE
+        # =========================================
         return jsonify({
+
+            "status": "ok",
+
+            "job_id": job_id,
+
             "index": template["index"],
-            "prev_hash": template["prev_hash"],
+
             "difficulty": template["difficulty"],
-            "header": block_header
+
+            "prev_hash": template["prev_hash"],
+
+            "merkle_root": template["merkle_root"],
+
+            "timestamp": template["timestamp"],
+
+            "header": block_header,
+
+            "header_hash": header_hash
+        })
+
+    except requests.exceptions.Timeout:
+
+        return jsonify({
+            "error": "node timeout"
+        })
+
+    except requests.exceptions.ConnectionError:
+
+        return jsonify({
+            "error": "node offline"
         })
 
     except Exception as e:
-        return {"error": str(e)}
+
+        print("❌ get_job error:", e)
+
+        return jsonify({
+            "error": str(e)
+        })
 
 # ==================================================
 # GET BLOCK BY HEIGHT
