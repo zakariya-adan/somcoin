@@ -813,64 +813,46 @@ def dns_bootstrap():
         time.sleep(60)
 
 # ==================================================
-# 🚀 BOOTSTRAP PEERS (ULTRA PRO MAX)
+# 🌍 DECENTRALIZED BOOTSTRAP (BITCOIN STYLE PRO)
 # ==================================================
 
 def bootstrap_peers():
 
-    # =========================================
-    # OFFICIAL SEED NODES
-    # =========================================
-    hardcoded = [
-
-        # =====================================
-        # MAIN VPS NODES
-        # =====================================
-        "167.86.117.249:9334",
-        "23.94.66.117:9334",
-
-        # =====================================
-        # LOCALHOST FALLBACK
-        # =====================================
-        "127.0.0.1:9334"
-    ]
+    global p2p_peers
 
     added = 0
     failed = 0
 
-    print("🌍 Bootstrapping peers...")
+    print("🌍 Starting decentralized bootstrap...")
 
-    for peer in hardcoded:
+    # =============================================
+    # OWN IP
+    # =============================================
+    my_ip = PUBLIC_IP
+
+    # =============================================
+    # MINIMAL SEEDS
+    # Bitcoin style:
+    # only few stable seeds
+    # =============================================
+    seed_nodes = [
+
+        ("167.86.117.249", 9334),
+        ("23.94.66.117", 9334),
+    ]
+
+    # =============================================
+    # CONNECT TO SEEDS
+    # =============================================
+    for ip, port in seed_nodes:
 
         try:
 
-            # =================================
-            # FORMAT CHECK
-            # =================================
-            if ":" not in peer:
-                failed += 1
+            # skip self
+            if ip == my_ip:
                 continue
 
-            ip, port = peer.split(":")
-
-            ip = ip.strip()
-
-            try:
-                port = int(port)
-            except:
-                failed += 1
-                continue
-
-            # =================================
-            # PORT VALIDATION
-            # =================================
-            if port <= 0 or port > 65535:
-                failed += 1
-                continue
-
-            # =================================
-            # ADD PEER
-            # =================================
+            # add peer
             ok = add_peer_safe(
                 ip,
                 port
@@ -881,9 +863,67 @@ def bootstrap_peers():
                 added += 1
 
                 print(
-                    f"✅ Peer added: "
+                    f"✅ Seed connected: "
                     f"{ip}:{port}"
                 )
+
+                # =================================
+                # ASK PEERS FROM SEED
+                # =================================
+                try:
+
+                    peers = request_peers(
+                        ip,
+                        port
+                    )
+
+                    # =============================
+                    # ADD DISCOVERED PEERS
+                    # =============================
+                    for peer in peers:
+
+                        try:
+
+                            peer_ip = peer["ip"]
+                            peer_port = int(peer["port"])
+
+                            # skip self
+                            if peer_ip == my_ip:
+                                continue
+
+                            # skip localhost
+                            if peer_ip.startswith("127."):
+                                continue
+
+                            # skip invalid
+                            if (
+                                peer_port <= 0 or
+                                peer_port > 65535
+                            ):
+                                continue
+
+                            # add discovered peer
+                            if add_peer_safe(
+                                peer_ip,
+                                peer_port
+                            ):
+
+                                added += 1
+
+                                print(
+                                    f"🌐 Discovered: "
+                                    f"{peer_ip}:{peer_port}"
+                                )
+
+                        except:
+                            continue
+
+                except Exception as e:
+
+                    print(
+                        f"⚠️ Peer discovery failed: "
+                        f"{e}"
+                    )
 
             else:
 
@@ -894,11 +934,118 @@ def bootstrap_peers():
             failed += 1
 
             print(
-                f"❌ Bootstrap peer failed: "
-                f"{peer} | {e}"
+                f"❌ Seed failed: "
+                f"{ip}:{port} | {e}"
             )
 
-            continue
+    # =============================================
+    # DNS DISCOVERY
+    # =============================================
+    dns_seeds = [
+
+        "seed.somcoin.net",
+        "dnsseed.somcoin.net"
+    ]
+
+    for host in dns_seeds:
+
+        try:
+
+            ips = socket.gethostbyname_ex(
+                host
+            )[2]
+
+            for ip in ips:
+
+                try:
+
+                    if ip == my_ip:
+                        continue
+
+                    if add_peer_safe(
+                        ip,
+                        9334
+                    ):
+
+                        added += 1
+
+                        print(
+                            f"🌍 DNS peer: "
+                            f"{ip}:9334"
+                        )
+
+                except:
+                    continue
+
+        except Exception as e:
+
+            print(
+                f"⚠️ DNS seed failed: "
+                f"{host} | {e}"
+            )
+
+    # =============================================
+    # PEER EXCHANGE
+    # =============================================
+    try:
+
+        current = list(p2p_peers)
+
+        for peer in current:
+
+            try:
+
+                ip = peer["ip"]
+                port = peer["port"]
+
+                discovered = request_peers(
+                    ip,
+                    port
+                )
+
+                for p in discovered:
+
+                    try:
+
+                        new_ip = p["ip"]
+                        new_port = int(
+                            p["port"]
+                        )
+
+                        if new_ip == my_ip:
+                            continue
+
+                        if add_peer_safe(
+                            new_ip,
+                            new_port
+                        ):
+
+                            added += 1
+
+                    except:
+                        continue
+
+            except:
+                continue
+
+    except Exception as e:
+
+        print(
+            f"⚠️ Peer exchange failed: "
+            f"{e}"
+        )
+
+    # =============================================
+    # FINAL STATUS
+    # =============================================
+    print(
+        f"🚀 Decentralized bootstrap complete | "
+        f"peers={len(p2p_peers)} "
+        f"added={added} "
+        f"failed={failed}"
+    )
+
+    return added
 
     # =========================================
     # FINAL STATUS
