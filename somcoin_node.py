@@ -1283,6 +1283,7 @@ CREATOR = "Zakariya Adan Team"
 NETWORK_ID = "SOM_MAINNET_1"
 CREATED_YEAR = "2026"
 
+VERSION = "1.0.0"
 BLOCKCHAIN_FILE = "blockchain.json"
 MEMPOOL_FILE = "mempool.json"
 PEERS_FILE = "peers.json"
