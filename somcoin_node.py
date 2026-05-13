@@ -3404,7 +3404,7 @@ def replace_chain(new_chain):
 
     with blockchain_lock:
 
-    old_chain = blockchain.copy()
+       old_chain = blockchain.copy()
 
     try:
 
