@@ -3179,6 +3179,39 @@ def send_msg(conn, data):
     except Exception as e:
         pass
 
+# ==================================================
+# 📥 RECEIVE MESSAGE
+# ==================================================
+def recv_msg(conn):
+
+    try:
+
+        data = b""
+
+        while True:
+
+            chunk = conn.recv(65536)
+
+            if not chunk:
+                break
+
+            data += chunk
+
+            # end marker
+            if b"\n" in chunk:
+                break
+
+        if not data:
+            return None
+
+        return data.decode().strip()
+
+    except Exception as e:
+
+        print("recv_msg error:", e)
+
+        return None
+
 # =========================
 # 🛡 ANTI-SPAM (INBOUND)
 # =========================
