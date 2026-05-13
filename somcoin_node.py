@@ -3195,39 +3195,46 @@ def is_spam(ip):
     last_msg_time[ip] = now
     return False
 
-
 # ==================================================
-# HANDLE P2P MESSAGE (ULTRA PRO MAX 🚀 FINAL FIXED)
+# HANDLE P2P MESSAGE (ULTRA PRO MAX 🚀 REAL NETWORK)
 # ==================================================
 recent_tx_ids = set()
 recent_block_ids = set()
 
 def handle_msg(msg, conn):
 
-    global blockchain, p2p_peers, pending_transactions
+    global blockchain
+    global p2p_peers
+    global pending_transactions
 
     try:
 
         ip = conn.getpeername()[0]
 
-        # =========================
-        # ANTI SPAM
-        # =========================
+        # ==================================================
+        # 🛡 ANTI SPAM
+        # ==================================================
         if is_spam(ip):
             return
 
-        # =========================
-        # SAFE PARSE
-        # =========================
-        if isinstance(msg, str) and len(msg) > 100000:
-            update_ip_reputation(ip, False)
-            return
+        # ==================================================
+        # 🛡 SAFE PARSE
+        # ==================================================
+        if isinstance(msg, str):
 
-        try:
-            data = json.loads(msg) if isinstance(msg, str) else msg
-        except:
-            update_ip_reputation(ip, False)
-            return
+            if len(msg) > 1000000:
+                update_ip_reputation(ip, False)
+                return
+
+            try:
+                data = json.loads(msg)
+
+            except:
+                update_ip_reputation(ip, False)
+                return
+
+        else:
+            data = msg
 
         if not isinstance(data, dict):
             return
@@ -3243,29 +3250,40 @@ def handle_msg(msg, conn):
 
             for item in data.get("data", []):
 
+                if not isinstance(item, dict):
+                    continue
+
                 typ = item.get("type")
                 item_id = item.get("id")
 
                 if not typ or not item_id:
                     continue
 
-                if (
-                    typ == "tx"
-                    and item_id not in recent_tx_ids
-                ):
-                    request_items.append(item)
+                # ================= TX =================
+                if typ == "tx":
 
-                elif (
-                    typ == "block"
-                    and item_id not in recent_block_ids
-                ):
-                    request_items.append(item)
+                    if item_id not in recent_tx_ids:
+
+                        request_items.append({
+                            "type": "tx",
+                            "id": item_id
+                        })
+
+                # ================= BLOCK =================
+                elif typ == "block":
+
+                    if item_id not in recent_block_ids:
+
+                        request_items.append({
+                            "type": "block",
+                            "id": item_id
+                        })
 
             if request_items:
 
                 send_msg(conn, {
                     "type": "getdata",
-                    "data": request_items[:10]
+                    "data": request_items[:25]
                 })
 
         # ==================================================
@@ -3275,40 +3293,57 @@ def handle_msg(msg, conn):
 
             for item in data.get("data", []):
 
+                if not isinstance(item, dict):
+                    continue
+
                 typ = item.get("type")
                 item_id = item.get("id")
 
-                # =========================
-                # TX REQUEST
-                # =========================
+                # ==================================================
+                # 💸 TX REQUEST
+                # ==================================================
                 if typ == "tx":
 
-                    for tx in pending_transactions:
+                    with mempool_lock:
 
-                        if tx_hash(tx) == item_id:
+                        for tx in pending_transactions:
 
-                            send_msg(conn, {
-                                "type": "tx",
-                                "data": tx
-                            })
+                            try:
 
-                            break
+                                if tx_hash(tx) == item_id:
 
-                # =========================
-                # BLOCK REQUEST
-                # =========================
+                                    send_msg(conn, {
+                                        "type": "tx",
+                                        "data": tx
+                                    })
+
+                                    break
+
+                            except:
+                                pass
+
+                # ==================================================
+                # 📦 BLOCK REQUEST
+                # ==================================================
                 elif typ == "block":
 
-                    for b in blockchain:
+                    with blockchain_lock:
 
-                        if b["hash"] == item_id:
+                        for b in blockchain:
 
-                            send_msg(conn, {
-                                "type": "compact_block",
-                                "data": b
-                            })
+                            try:
 
-                            break
+                                if b["hash"] == item_id:
+
+                                    send_msg(conn, {
+                                        "type": "compact_block",
+                                        "data": b
+                                    })
+
+                                    break
+
+                            except:
+                                pass
 
         # ==================================================
         # 💸 TX
@@ -3320,43 +3355,50 @@ def handle_msg(msg, conn):
             if not isinstance(tx, dict):
                 return
 
-            txid = tx_hash(tx)
+            try:
+                txid = tx_hash(tx)
 
-            # 🚫 duplicate
+            except:
+                return
+
+            # ==================================================
+            # 🚫 DUPLICATE
+            # ==================================================
             if txid in recent_tx_ids:
                 return
 
             with mempool_lock:
 
-                # 🚫 duplicate mempool
                 if any(
                     tx_hash(t) == txid
                     for t in pending_transactions
                 ):
                     return
 
-                # 🔒 verify
+                # ==================================================
+                # 🔒 VERIFY TX
+                # ==================================================
                 if not verify_tx(tx):
 
-                    update_ip_reputation(
-                        ip,
-                        False
-                    )
+                    update_ip_reputation(ip, False)
 
                     return
 
-                # ✅ add tx
+                # ==================================================
+                # ✅ ADD MEMPOOL
+                # ==================================================
                 pending_transactions.append(tx)
 
                 recent_tx_ids.add(txid)
 
-                # memory limit
-                if len(recent_tx_ids) > 5000:
+                if len(recent_tx_ids) > 10000:
                     recent_tx_ids.clear()
 
             update_ip_reputation(ip, True)
 
-            # 📢 broadcast inv
+            # ==================================================
+            # 📢 BROADCAST INV
+            # ==================================================
             p2p_broadcast({
                 "type": "inv",
                 "data": [{
@@ -3364,6 +3406,8 @@ def handle_msg(msg, conn):
                     "id": txid
                 }]
             })
+
+            print(f"💸 TX accepted {txid[:16]}")
 
         # ==================================================
         # 📦 NORMAL BLOCK SUPPORT
@@ -3375,7 +3419,6 @@ def handle_msg(msg, conn):
             if not isinstance(block, dict):
                 return
 
-            # 🔥 convert old block format
             handle_msg({
                 "type": "compact_block",
                 "data": block
@@ -3396,72 +3439,82 @@ def handle_msg(msg, conn):
             if not block_hash:
                 return
 
-            # 🚫 duplicate
+            # ==================================================
+            # 🚫 DUPLICATE
+            # ==================================================
             if block_hash in recent_block_ids:
                 return
 
-            if any(
-                b["hash"] == block_hash
-                for b in blockchain
-            ):
-                return
+            with blockchain_lock:
+
+                if any(
+                    b["hash"] == block_hash
+                    for b in blockchain
+                ):
+                    return
 
             # ==================================================
             # 🔥 FORK DETECT
             # ==================================================
-            if (
-                blockchain
-                and block.get("previous_hash")
-                != blockchain[-1]["hash"]
-            ):
+            if blockchain:
 
-                print(
-                    "⚠️ Fork detected "
-                    "→ syncing..."
+                last_hash = blockchain[-1]["hash"]
+
+                if block.get("previous_hash") != last_hash:
+
+                    print("⚠️ Fork detected → syncing")
+
+                    threading.Thread(
+                        target=request_chain,
+                        daemon=True
+                    ).start()
+
+                    return
+
+            # ==================================================
+            # 🔒 VALIDATE HASH
+            # ==================================================
+            try:
+
+                tx_str = json.dumps(
+                    block["transactions"],
+                    sort_keys=True
                 )
 
-                threading.Thread(
-                    target=request_chain,
-                    daemon=True
-                ).start()
+                calc_hash = calculate_hash(
+                    block["index"],
+                    block["previous_hash"],
+                    block["timestamp"],
+                    block["nonce"],
+                    tx_str
+                )
+
+            except Exception as e:
+
+                print("Hash error:", e)
 
                 return
-
-            # ==================================================
-            # HASH VALIDATION
-            # ==================================================
-            tx_str = json.dumps(
-                block["transactions"],
-                sort_keys=True
-            )
-
-            calc_hash = calculate_hash(
-                block["index"],
-                block["previous_hash"],
-                block["timestamp"],
-                block["nonce"],
-                tx_str
-            )
 
             if calc_hash != block_hash:
 
-                update_ip_reputation(
-                    ip,
-                    False
-                )
+                update_ip_reputation(ip, False)
 
                 return
 
             # ==================================================
-            # POW CHECK
+            # ⛏ POW CHECK
             # ==================================================
+            difficulty = int(
+                block.get("difficulty", 1)
+            )
+
             if not calc_hash.startswith(
-                "0" * block.get("difficulty", 1)
+                "0" * difficulty
             ):
                 return
 
             # ==================================================
-            # TX VALIDATION
+            # 🔒 VERIFY TXS
             # ==================================================
             used_inputs = set()
 
@@ -3470,18 +3523,22 @@ def handle_msg(msg, conn):
                 []
             ):
 
-                if not verify_tx(
-                    tx,
-                    used_inputs
-                ):
+                try:
+
+                    if not verify_tx(
+                        tx,
+                        used_inputs
+                    ):
+                        return
+
+                except:
                     return
 
             # ==================================================
-            # ADD BLOCK
+            # ✅ ADD BLOCK
             # ==================================================
             with blockchain_lock:
 
-                # 🚫 double add
                 if any(
                     b["hash"] == block_hash
                     for b in blockchain
@@ -3491,21 +3548,19 @@ def handle_msg(msg, conn):
                 blockchain.append(block)
 
                 try:
-
                     update_utxo(block)
 
                 except Exception as e:
 
                     print(
-                        "⚠️ UTXO error "
-                        "→ rebuilding:",
+                        "⚠️ UTXO rebuild:",
                         e
                     )
 
                     rebuild_utxo()
 
             # ==================================================
-            # CLEAN MEMPOOL
+            # 🧹 CLEAN MEMPOOL
             # ==================================================
             confirmed_txids = set()
 
@@ -3532,16 +3587,16 @@ def handle_msg(msg, conn):
                 ]
 
             # ==================================================
-            # SAVE
+            # 💾 SAVE
             # ==================================================
             save_data()
 
             # ==================================================
-            # CACHE
+            # 🧠 CACHE
             # ==================================================
             recent_block_ids.add(block_hash)
 
-            if len(recent_block_ids) > 5000:
+            if len(recent_block_ids) > 10000:
                 recent_block_ids.clear()
 
             update_ip_reputation(ip, True)
@@ -3560,7 +3615,7 @@ def handle_msg(msg, conn):
             print(
                 f"✅ Block accepted "
                 f"| height={block['index']} "
-                f"| hash={block_hash[:16]}"
+                f"| hash={block_hash[:20]}"
             )
 
         # ==================================================
@@ -3568,11 +3623,13 @@ def handle_msg(msg, conn):
         # ==================================================
         elif msg_type == "get_headers":
 
+            headers = get_block_headers(
+                blockchain[-500:]
+            )
+
             send_msg(conn, {
                 "type": "headers",
-                "data": get_block_headers(
-                    blockchain[-500:]
-                )
+                "data": headers
             })
 
         # ==================================================
@@ -3583,8 +3640,7 @@ def handle_msg(msg, conn):
             headers = data.get("data", [])
 
             print(
-                "📊 Headers received:",
-                len(headers)
+                f"📊 Headers received: {len(headers)}"
             )
 
             if (
@@ -3593,8 +3649,7 @@ def handle_msg(msg, conn):
             ):
 
                 print(
-                    "⚡ Need sync "
-                    "→ requesting chain"
+                    "⚡ Sync needed"
                 )
 
                 threading.Thread(
@@ -3607,9 +3662,22 @@ def handle_msg(msg, conn):
         # ==================================================
         elif msg_type == "get_chain":
 
+            start = int(
+                data.get("start", 0)
+            )
+
+            if start < 0:
+                start = 0
+
+            chunk = blockchain[
+                start:start + 1000
+            ]
+
             send_msg(conn, {
                 "type": "chain",
-                "data": blockchain[-300:]
+                "data": chunk,
+                "start": start,
+                "total": len(blockchain)
             })
 
         # ==================================================
@@ -3617,24 +3685,45 @@ def handle_msg(msg, conn):
         # ==================================================
         elif msg_type == "chain":
 
-            new_chain = data.get("data")
+            new_blocks = data.get("data", [])
 
-            if isinstance(new_chain, list):
+            if not isinstance(new_blocks, list):
+                return
 
-                if better_chain(new_chain):
+            if not new_blocks:
+                return
 
-                    print(
-                        "🔥 Stronger chain "
-                        "detected → replacing"
-                    )
+            added = 0
 
-                    replace_chain(new_chain)
+            with blockchain_lock:
 
-                else:
+                for block in new_blocks:
 
-                    print(
-                        "ℹ️ Ignored weaker chain"
-                    )
+                    try:
+
+                        if any(
+                            b["hash"] == block["hash"]
+                            for b in blockchain
+                        ):
+                            continue
+
+                        blockchain.append(block)
+
+                        added += 1
+
+                    except:
+                        continue
+
+            if added > 0:
+
+                rebuild_utxo()
+
+                save_data()
+
+                print(
+                    f"✅ Synced {added} blocks "
+                    f"| total={len(blockchain)}"
+                )
 
         # ==================================================
         # 🤝 HELLO
@@ -3660,8 +3749,10 @@ def handle_msg(msg, conn):
 
             send_msg(conn, {
                 "type": "peers",
-                "data": list(p2p_peers)[:50]
+                "data": list(p2p_peers)[:100]
             })
+
+            print(f"🤝 Peer connected {peer}")
 
         # ==================================================
         # 🌐 PEERS
@@ -3678,11 +3769,11 @@ def handle_msg(msg, conn):
                     if port not in ALLOWED_PORTS:
                         continue
 
+                    peer = f"{ip2}:{port}"
+
                     if len(p2p_peers) < MAX_PEERS:
 
-                        p2p_peers.add(
-                            f"{ip2}:{port}"
-                        )
+                        p2p_peers.add(peer)
 
                 except:
                     continue
@@ -3709,36 +3800,88 @@ def handle_msg(msg, conn):
 
         print("P2P error:", e)
 
-
 # ==================================================
-# REQUEST CHAIN
+# 🌍 REQUEST CHAIN (REAL BITCOIN STYLE)
 # ==================================================
 def request_chain():
 
-    for peer in list(p2p_peers):
+    global blockchain
+
+    peers = get_best_peers(3)
+
+    for peer in peers:
 
         try:
+
             ip, port = peer.split(":")
             port = int(port)
 
-            s = socket.socket()
-            s.settimeout(5)
+            start = len(blockchain)
 
-            s.connect((ip, port))
+            while True:
 
-            s.sendall((json.dumps({
-                "type": "get_chain"
-            }) + "\n").encode())
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(10)
 
-            data = s.recv(100000)  # 🔥 muhiim
+                s.connect((ip, port))
 
-            if data:
-                safe_handle(data.decode(), s)
+                send_msg(s, {
+                    "type": "get_chain",
+                    "start": start
+                })
 
-            s.close()
+                data = recv_msg(s)
 
-        except:
-            pass
+                s.close()
+
+                if not data:
+                    break
+
+                msg = json.loads(data)
+
+                if msg.get("type") != "chain":
+                    break
+
+                chunk = msg.get("data", [])
+
+                if not chunk:
+                    break
+
+                if not isinstance(chunk, list):
+                    break
+
+                print(f"📦 Sync chunk {start} -> {start + len(chunk)}")
+
+                with blockchain_lock:
+
+                    for block in chunk:
+
+                        if any(b["hash"] == block["hash"] for b in blockchain):
+                            continue
+
+                        blockchain.append(block)
+
+                    save_data()
+
+                start += len(chunk)
+
+                total = msg.get("total", 0)
+
+                if start >= total:
+                    break
+
+            rebuild_utxo()
+
+            print(f"✅ Full sync completed | blocks={len(blockchain)}")
+
+            return True
+
+        except Exception as e:
+
+            print("Sync error:", e)
+
+    return False
+
 
 def sync_headers():
     for peer in list(p2p_peers):
