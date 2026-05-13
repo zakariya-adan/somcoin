@@ -4928,6 +4928,61 @@ def receive_block_http():
 
 
 # ==================================================
+# 🌐 GET PEERS API
+# ==================================================
+@app.route("/peers", methods=["GET", "POST"])
+def peers_api():
+
+    global p2p_peers
+
+    # =========================
+    # POST = RECEIVE PEERS
+    # =========================
+    if request.method == "POST":
+
+        try:
+
+            data = request.get_json(force=True)
+
+            new_peers = data.get("peers", [])
+
+            added = 0
+
+            for peer in new_peers:
+
+                try:
+
+                    ip, port = peer.split(":")
+                    port = int(port)
+
+                    if add_peer_safe(ip, port):
+                        added += 1
+
+                except:
+                    continue
+
+            save_peers_safe()
+
+            return jsonify({
+                "status": "ok",
+                "added": added,
+                "total": len(p2p_peers)
+            })
+
+        except Exception as e:
+
+            return jsonify({
+                "error": str(e)
+            })
+
+    # =========================
+    # GET = SHARE PEERS
+    # =========================
+    return jsonify({
+        "peers": list(p2p_peers)[:100]
+    })
+
+# ==================================================
 # API INFO
 # ==================================================
 @app.route("/api")
