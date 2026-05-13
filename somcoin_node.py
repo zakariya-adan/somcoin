@@ -459,20 +459,28 @@ def add_peer_safe(ip, port):
         print("Add peer error:", e)
         return False
 
+
 # =========================
-# 🔥 SMART DISCOVERY (FINAL FIXED )
+# 🔥 SMART DISCOVERY (ULTRA FIXED)
 # =========================
 def smart_discovery():
+
     while True:
+
         try:
+
             all_peers = list(p2p_peers)
 
+            # =========================
+            # NO PEERS
+            # =========================
             if not all_peers:
+
                 time.sleep(5)
                 continue
 
             # =========================
-            # 🔥 BEST + RANDOM (IMPORTANT)
+            # 🔥 BEST + RANDOM MIX
             # =========================
             best_peers = sorted(
                 all_peers,
@@ -485,209 +493,693 @@ def smart_discovery():
                 min(10, len(all_peers))
             )
 
-            selected_peers = list(set(best_peers + random_peers))
+            selected_peers = list(
+                set(best_peers + random_peers)
+            )
 
             # =========================
-            # 🔁 LOOP
+            # 🔁 LOOP PEERS
             # =========================
             for peer in selected_peers:
 
-                if peer == f"{NODE_IP}:{P2P_PORT}":
-                    continue
-
                 try:
+
+                    if ":" not in peer:
+                        continue
+
                     ip, port = peer.split(":")
                     port = int(port)
+
+                    # 🚫 self skip
+                    if (
+                        ip == NODE_IP
+                        and port == P2P_PORT
+                    ):
+                        continue
 
                     # 🚫 banned
                     if is_banned(ip):
                         continue
 
+                    # =========================
+                    # 🔥 IMPORTANT FIX
+                    # =========================
+                    # HTTP API = 9443
+                    # P2P SOCKET = 9334
+                    # =========================
+                    url = f"http://{ip}:9443/peers"
+
                     r = requests.get(
-                        f"http://{ip}:{port}/peers",
-                        timeout=2
+                        url,
+                        timeout=3
                     )
 
+                    # =========================
+                    # BAD RESPONSE
+                    # =========================
                     if r.status_code != 200:
+
                         punish_peer(peer)
                         continue
 
+                    # =========================
+                    # GOOD PEER
+                    # =========================
                     reward_peer(peer)
+
                     mark_peer_alive(peer)
 
-                    data = r.json()
-                    new_peers = data.get("peers", [])
+                    # =========================
+                    # PARSE JSON
+                    # =========================
+                    try:
+
+                        data = r.json()
+
+                    except Exception:
+
+                        punish_peer(peer)
+                        continue
+
+                    new_peers = data.get(
+                        "peers",
+                        []
+                    )
 
                     # =========================
-                    # 🔥 ADD NEW PEERS (SAFE)
+                    # ADD NEW PEERS
                     # =========================
+                    added = 0
+
                     for new_peer in new_peers:
 
                         try:
+
+                            if ":" not in new_peer:
+                                continue
+
                             nip, nport = new_peer.split(":")
                             nport = int(nport)
 
-                            # 🔒 use safe add (IMPORTANT)
-                            add_peer_safe(nip, nport)
+                            # 🚫 self
+                            if (
+                                nip == NODE_IP
+                                and nport == P2P_PORT
+                            ):
+                                continue
+
+                            # 🚫 banned
+                            if is_banned(nip):
+                                continue
+
+                            # 🔥 SAFE ADD
+                            if add_peer_safe(
+                                nip,
+                                nport
+                            ):
+                                added += 1
 
                         except Exception:
                             continue
 
-                except Exception:
+                    # =========================
+                    # DEBUG
+                    # =========================
+                    if added > 0:
+
+                        print(
+                            f"🌐 Discovery "
+                            f"added {added} peers "
+                            f"from {peer}"
+                        )
+
+                except Exception as e:
+
                     punish_peer(peer)
 
             # =========================
-            # 🧹 CLEAN BAD PEERS (LIGHT)
+            # 🧹 CLEAN DEAD PEERS
             # =========================
             for peer in list(p2p_peers):
-                if peer_scores.get(peer, 0) < -5:
-                    p2p_peers.discard(peer)
-                    peer_scores.pop(peer, None)
-                    peer_failures.pop(peer, None)
-                    peer_health.pop(peer, None)
+
+                try:
+
+                    score = peer_scores.get(
+                        peer,
+                        0
+                    )
+
+                    if score < -5:
+
+                        p2p_peers.discard(peer)
+
+                        peer_scores.pop(
+                            peer,
+                            None
+                        )
+
+                        peer_failures.pop(
+                            peer,
+                            None
+                        )
+
+                        peer_health.pop(
+                            peer,
+                            None
+                        )
+
+                        print(
+                            f"❌ Removed bad peer "
+                            f"{peer}"
+                        )
+
+                except:
+                    pass
+
+            # =========================
+            # SAVE
+            # =========================
+            save_peers_safe()
 
         except Exception as e:
-            print("Discovery error:", e)
 
+            print(
+                "Discovery error:",
+                e
+            )
+
+        # =========================
+        # LOOP DELAY
+        # =========================
         time.sleep(6)
 
+
+# ==================================================
+# 🌐 GOSSIP PEERS (ULTRA FIXED)
+# ==================================================
 def gossip_peers():
+
     while True:
-        for peer in list(p2p_peers):
-            try:
-                ip, port = peer.split(":")
-                requests.post(f"http://{ip}:{port}/peers", json={
-                    "peers": list(p2p_peers)[:20]
-                }, timeout=2)
-            except:
-                pass
+
+        try:
+
+            peers_copy = list(p2p_peers)
+
+            for peer in peers_copy:
+
+                try:
+
+                    if ":" not in peer:
+                        continue
+
+                    ip, port = peer.split(":")
+                    port = int(port)
+
+                    # 🚫 self skip
+                    if (
+                        ip == NODE_IP
+                        and port == P2P_PORT
+                    ):
+                        continue
+
+                    # 🚫 banned
+                    if is_banned(ip):
+                        continue
+
+                    # =========================
+                    # 🔥 IMPORTANT FIX
+                    # HTTP = 9443
+                    # NOT P2P PORT
+                    # =========================
+                    r = requests.post(
+                        f"http://{ip}:9443/peers",
+                        json={
+                            "peers": peers_copy[:50]
+                        },
+                        timeout=3
+                    )
+
+                    if r.status_code == 200:
+
+                        reward_peer(peer)
+
+                    else:
+
+                        punish_peer(peer)
+
+                except Exception:
+
+                    punish_peer(peer)
+
+        except Exception as e:
+
+            print(
+                "Gossip error:",
+                e
+            )
 
         time.sleep(10)
 
+
+# ==================================================
+# 🌍 DNS SEED RESOLVER
+# ==================================================
 def resolve_dns_seeds():
+
     new_peers = []
 
     for seed in DNS_SEEDS:
+
         try:
-            ips = socket.gethostbyname_ex(seed)[2]
+
+            ips = socket.gethostbyname_ex(
+                seed
+            )[2]
+
             for ip in ips:
+
+                # 🚫 bad ips
+                if (
+                    ip.startswith("127.")
+                    or ip.startswith("0.")
+                    or ip == "0.0.0.0"
+                ):
+                    continue
+
                 peer = f"{ip}:{P2P_PORT}"
+
                 new_peers.append(peer)
+
         except Exception as e:
-            print("DNS seed error:", seed, e)
 
-    return new_peers
+            print(
+                "DNS seed error:",
+                seed,
+                e
+            )
+
+    return list(set(new_peers))
 
 
+# ==================================================
+# 🚀 DNS BOOTSTRAP
+# ==================================================
 def dns_bootstrap():
+
     while True:
+
         try:
+
             peers = resolve_dns_seeds()
 
+            added = 0
+
             for p in peers:
+
                 try:
+
                     ip, port = p.split(":")
-                    add_peer_safe(ip, int(port))
+                    port = int(port)
+
+                    if add_peer_safe(
+                        ip,
+                        port
+                    ):
+                        added += 1
+
                 except:
                     continue
 
+            if added > 0:
+
+                print(
+                    f"🌍 DNS added "
+                    f"{added} peers"
+                )
+
         except Exception as e:
-            print("DNS bootstrap error:", e)
+
+            print(
+                "DNS bootstrap error:",
+                e
+            )
 
         time.sleep(60)
 
+
+# ==================================================
+# 🔥 HARDCODED BOOTSTRAP
+# ==================================================
 def bootstrap_peers():
+
     hardcoded = [
+
+        # VPS
+        "167.86.117.249:9334",
+        "23.94.66.117:9334",
+
+        # future nodes
         "node1.somcoin.net:9334",
-        "node2.somcoin.net:9334"
+        "node2.somcoin.net:9334",
     ]
 
+    added = 0
+
     for p in hardcoded:
+
         try:
+
             ip, port = p.split(":")
-            add_peer_safe(ip, int(port))
+            port = int(port)
+
+            if add_peer_safe(
+                ip,
+                port
+            ):
+                added += 1
+
         except:
             continue
 
+    print(
+        f"🚀 Bootstrap added "
+        f"{added} peers"
+    )
+
+
+# ==================================================
+# 🔥 ENSURE MINIMUM PEERS
+# ==================================================
 def ensure_minimum_peers():
-    MIN_PEERS = 15   # 🔥 stronger network
+
+    MIN_PEERS = 15
 
     while True:
+
         try:
+
             with peers_lock:
+
                 current = len(p2p_peers)
 
+            # =========================
+            # LOW PEERS
+            # =========================
             if current < MIN_PEERS:
-                print(f"⚠️ Low peers ({current}) → recovering network...")
 
+                print(
+                    f"⚠️ Low peers "
+                    f"({current}) "
+                    f"→ recovering network..."
+                )
+
+                # =========================
                 # 🔁 RECONNECT SEEDS
+                # =========================
                 for seed in SEED_NODES:
+
                     try:
+
+                        if ":" not in seed:
+                            continue
+
                         ip, port = seed.split(":")
                         port = int(port)
 
+                        # 🚫 invalid
                         if (
-                            ip.startswith("0.") or
-                            ip.startswith("127.") or
-                            ip.startswith("255.") or
-                            ip == "0.0.0.0"
+                            ip.startswith("0.")
+                            or ip.startswith("127.")
+                            or ip.startswith("255.")
+                            or ip == "0.0.0.0"
                         ):
                             continue
 
-                        s = socket.socket()
-                        s.settimeout(3)
+                        # =========================
+                        # CONNECT P2P
+                        # =========================
+                        s = socket.socket(
+                            socket.AF_INET,
+                            socket.SOCK_STREAM
+                        )
+
+                        s.settimeout(5)
+
                         s.connect((ip, port))
 
-                        s.sendall((json.dumps({
+                        # =========================
+                        # SEND HELLO
+                        # =========================
+                        hello = {
                             "type": "hello",
                             "port": P2P_PORT,
                             "node_id": NODE_ID,
-                            "public_key": NODE_PUBLIC_KEY,
-                            "signature": sign_message(NODE_ID)
-                        }) + "\n").encode())
+                            "version": VERSION,
+                            "public_ip": NODE_IP,
+                            "timestamp": time.time()
+                        }
+
+                        s.sendall(
+                            (
+                                json.dumps(hello)
+                                + "\n"
+                            ).encode()
+                        )
+
+                        # =========================
+                        # RECEIVE RESPONSE
+                        # =========================
+                        try:
+
+                            response = recv_msg(s)
+
+                            if response:
+
+                                safe_handle(
+                                    response,
+                                    s
+                                )
+
+                        except:
+                            pass
 
                         s.close()
 
+                        # =========================
+                        # SAVE PEER
+                        # =========================
                         with peers_lock:
-                            if len(p2p_peers) < MAX_PEERS:
+
+                            if (
+                                len(p2p_peers)
+                                < MAX_PEERS
+                            ):
+
                                 p2p_peers.add(seed)
 
-                                if len(peer_ips) < MAX_PEER_IPS:
-                                    peer_ips.add(ip)
+                                peer_ips.add(ip)
 
-                                peer_scores[seed] = 5
+                                peer_scores[seed] = 10
+
                                 mark_peer_alive(seed)
 
-                        print("🔁 Reconnected seed:", seed)
+                        print(
+                            "🔁 Reconnected seed:",
+                            seed
+                        )
 
-                    except:
-                        continue
+                    except Exception as e:
 
-                # 🌐 EXTRA BOOST
-                random_bootstrap()
-                request_peers()
+                        print(
+                            "Reconnect failed:",
+                            seed,
+                            e
+                        )
+
+                # =========================
+                # EXTRA DISCOVERY
+                # =========================
+                try:
+                    bootstrap_peers()
+                except:
+                    pass
+
+                try:
+                    request_peers()
+                except:
+                    pass
+
+                try:
+                    random_bootstrap()
+                except:
+                    pass
+
+                try:
+                    save_peers_safe()
+                except:
+                    pass
+
+            # =========================
+            # STATUS
+            # =========================
+            print(
+                f"👥 Active peers: "
+                f"{len(p2p_peers)}"
+            )
 
         except Exception as e:
-            print("Ensure peer error:", e)
+
+            print(
+                "Ensure peer error:",
+                e
+            )
 
         time.sleep(8)
 
-
+# ==================================================
+# 💾 SAFE SAVE BLOCKCHAIN (ULTRA SAFE)
+# ==================================================
 def safe_save_blockchain():
+
+    global blockchain
+
     try:
+
         tmp_file = "blockchain.json.tmp"
         final_file = "blockchain.json"
+        backup_file = "blockchain.backup.json"
 
-        # ensure dir
-        open(tmp_file, "w").close()
+        # =========================
+        # ENSURE DATA VALID
+        # =========================
+        if not isinstance(blockchain, list):
 
-        with open(tmp_file, "w") as f:
-            json.dump(blockchain, f)
+            print(
+                "❌ Invalid blockchain type"
+            )
 
-        os.replace(tmp_file, final_file)
+            return False
+
+        # =========================
+        # EMPTY CHAIN PROTECT
+        # =========================
+        if len(blockchain) == 0:
+
+            print(
+                "❌ Refusing to save "
+                "empty blockchain"
+            )
+
+            return False
+
+        # =========================
+        # SERIALIZE TEST
+        # =========================
+        try:
+
+            chain_data = json.dumps(
+                blockchain,
+                indent=2
+            )
+
+        except Exception as e:
+
+            print(
+                "❌ JSON serialize error:",
+                e
+            )
+
+            return False
+
+        # =========================
+        # WRITE TMP FILE
+        # =========================
+        with open(
+            tmp_file,
+            "w",
+            encoding="utf-8"
+        ) as f:
+
+            f.write(chain_data)
+
+            f.flush()
+
+            os.fsync(f.fileno())
+
+        # =========================
+        # VERIFY TMP FILE
+        # =========================
+        try:
+
+            with open(
+                tmp_file,
+                "r",
+                encoding="utf-8"
+            ) as f:
+
+                verify_data = json.load(f)
+
+            if not isinstance(
+                verify_data,
+                list
+            ):
+
+                print(
+                    "❌ Verification failed"
+                )
+
+                return False
+
+        except Exception as e:
+
+            print(
+                "❌ Verify error:",
+                e
+            )
+
+            return False
+
+        # =========================
+        # BACKUP OLD FILE
+        # =========================
+        if os.path.exists(final_file):
+
+            try:
+
+                shutil.copy2(
+                    final_file,
+                    backup_file
+                )
+
+            except:
+                pass
+
+        # =========================
+        # ATOMIC REPLACE
+        # =========================
+        os.replace(
+            tmp_file,
+            final_file
+        )
+
+        # =========================
+        # SUCCESS
+        # =========================
+        print(
+            f"💾 Blockchain saved "
+            f"| blocks={len(blockchain)}"
+        )
+
+        return True
 
     except Exception as e:
-        print("Save error:", e)
+
+        print(
+            "❌ Save error:",
+            e
+        )
+
+        return False
 
 # ==================================================
 # 🌍 AUTO SEED EXPANSION (GLOBAL NETWORK GROWTH)
