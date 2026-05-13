@@ -67,53 +67,38 @@ def get_new_difficulty(chain):
     return difficulty
 
 # ==================================================
-# 🔥 AUTO SCALING DIFFICULTY (SMART NETWORK)
+# 🔥 NETWORK DIFFICULTY (BITCOIN STYLE FIXED)
 # ==================================================
+
 def dynamic_difficulty():
 
     global blockchain
-    global p2p_peers
 
     # =========================
-    # BASE FROM BLOCK SPEED
+    # EMPTY CHAIN PROTECTION
     # =========================
-    base = get_new_difficulty(blockchain)
-
-    peer_count = len(p2p_peers)
-
-    # =========================
-    # AUTO SCALE BY NETWORK SIZE
-    # =========================
-    if peer_count < 5:
-
-        min_diff = 3
-        max_diff = 5
-
-    elif peer_count < 20:
-
-        min_diff = 4
-        max_diff = 6
-
-    elif peer_count < 100:
-
-        min_diff = 5
-        max_diff = 8
-
-    else:
-
-        min_diff = 6
-        max_diff = 10
+    if len(blockchain) == 0:
+        return MIN_DIFFICULTY
 
     # =========================
-    # LIMITS
+    # REAL CONSENSUS DIFFICULTY
     # =========================
-    if base < min_diff:
-        base = min_diff
+    # ✅ difficulty MUST depend ONLY
+    # on blockchain history
+    # ❌ NEVER peer count
+    # =========================
+    difficulty = get_new_difficulty(blockchain)
 
-    if base > max_diff:
-        base = max_diff
+    # =========================
+    # SAFETY LIMITS
+    # =========================
+    if difficulty < MIN_DIFFICULTY:
+        difficulty = MIN_DIFFICULTY
 
-    return base
+    if difficulty > MAX_DIFFICULTY:
+        difficulty = MAX_DIFFICULTY
+
+    return difficulty
 
 # ==================================================
 # 🌍 P2P CONFIG (PRO GLOBAL - REAL BITCOIN STYLE 🚀)
@@ -2012,7 +1997,7 @@ def verify_transaction(tx):
         except:
             return False
 
-        if len(public_key) not in (64, 65):
+        if len(public_key) != 64:
             return False
 
         tx_copy = dict(tx)
@@ -3416,6 +3401,8 @@ def replace_chain(new_chain):
 
     global blockchain
     global pending_transactions
+
+    with blockchain_lock:
 
     old_chain = blockchain.copy()
 
@@ -5816,59 +5803,6 @@ def home():
 @app.route("/wallet")
 def wallet():
     return render_template("wallet.html")
-
-
-
-# ==================================================
-# 📥 RECEIVE PEERS (SECURE)
-# ==================================================
-@app.route("/peers", methods=["POST"])
-def receive_peers():
-
-    data = request.json
-    new_peers = data.get("peers", [])
-
-    added = 0
-
-    for peer in new_peers:
-        try:
-            ip, port = peer.split(":")
-            port = int(port)
-
-            if port not in ALLOWED_PORTS:
-                continue
-
-            if ip.startswith("127.") or ip == "0.0.0.0":
-                continue
-
-            if ip in banned_ips:
-                continue
-
-            clean_peer = f"{ip}:{port}"
-
-            if clean_peer not in p2p_peers:
-                p2p_peers.add(clean_peer)
-                peer_scores[clean_peer] = 0
-                added += 1
-                save_peers_safe()
-
-        except:
-            continue
-
-    if added:
-        print(f"🌍 Added {added} peers")
-
-    return {"status": "ok", "added": added}
-
-
-# ==================================================
-# 📤 GET PEERS (FOR NETWORK)
-# ==================================================
-@app.route("/peers", methods=["GET"])
-def get_peers_api():
-    return jsonify({
-        "peers": list(p2p_peers)[:100]
-    })
 
 
 # ==================================================
