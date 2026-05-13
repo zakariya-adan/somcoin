@@ -812,46 +812,107 @@ def dns_bootstrap():
 
         time.sleep(60)
 
+# ==================================================
+# 🚀 BOOTSTRAP PEERS (ULTRA PRO MAX)
+# ==================================================
 
-# ==================================================
-# 🔥 HARDCODED BOOTSTRAP
-# ==================================================
 def bootstrap_peers():
 
+    # =========================================
+    # OFFICIAL SEED NODES
+    # =========================================
     hardcoded = [
 
-        # VPS
+        # =====================================
+        # MAIN VPS NODES
+        # =====================================
         "167.86.117.249:9334",
         "23.94.66.117:9334",
 
-        # future nodes
-        "node1.somcoin.net:9334",
-        "node2.somcoin.net:9334",
+        # =====================================
+        # LOCALHOST FALLBACK
+        # =====================================
+        "127.0.0.1:9334"
     ]
 
     added = 0
+    failed = 0
 
-    for p in hardcoded:
+    print("🌍 Bootstrapping peers...")
+
+    for peer in hardcoded:
 
         try:
 
-            ip, port = p.split(":")
-            port = int(port)
+            # =================================
+            # FORMAT CHECK
+            # =================================
+            if ":" not in peer:
+                failed += 1
+                continue
 
-            if add_peer_safe(
+            ip, port = peer.split(":")
+
+            ip = ip.strip()
+
+            try:
+                port = int(port)
+            except:
+                failed += 1
+                continue
+
+            # =================================
+            # PORT VALIDATION
+            # =================================
+            if port <= 0 or port > 65535:
+                failed += 1
+                continue
+
+            # =================================
+            # ADD PEER
+            # =================================
+            ok = add_peer_safe(
                 ip,
                 port
-            ):
+            )
+
+            if ok:
+
                 added += 1
 
-        except:
+                print(
+                    f"✅ Peer added: "
+                    f"{ip}:{port}"
+                )
+
+            else:
+
+                failed += 1
+
+        except Exception as e:
+
+            failed += 1
+
+            print(
+                f"❌ Bootstrap peer failed: "
+                f"{peer} | {e}"
+            )
+
             continue
 
+    # =========================================
+    # FINAL STATUS
+    # =========================================
     print(
-        f"🚀 Bootstrap added "
-        f"{added} peers"
+        f"🚀 Bootstrap complete | "
+        f"added={added} "
+        f"failed={failed}"
     )
 
+    # =========================================
+    # RETURN
+    # =========================================
+    return added
 
 # ==================================================
 # 🔥 ENSURE MINIMUM PEERS
