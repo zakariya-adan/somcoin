@@ -3806,28 +3806,6 @@ def verify_difficulty(block):
         return False
 
 # =========================================================
-# 🔥 VERIFY TX PLACEHOLDER
-# =========================================================
-
-def verify_tx(tx, used_inputs=None):
-
-    try:
-
-        if not isinstance(tx, dict):
-            return False
-
-        if "sender" not in tx:
-            return False
-
-        if "outputs" not in tx:
-            return False
-
-        return True
-
-    except:
-        return False
-
-# =========================================================
 # 🔥 VALIDATE BLOCK
 # =========================================================
 
