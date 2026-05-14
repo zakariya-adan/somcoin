@@ -616,10 +616,12 @@ def ensure_minimum_peers():
                         # =========================
                         hello = {
                             "type": "hello",
+                            "public_ip": NODE_IP,
                             "port": P2P_PORT,
                             "node_id": NODE_ID,
+                            "public_key": NODE_PUBLIC_KEY,
+                            "signature": sign_message(NODE_ID),
                             "version": VERSION,
-                            "public_ip": NODE_IP,
                             "timestamp": time.time()
                         }
 
@@ -3866,11 +3868,11 @@ def random_bootstrap():
                 # =========================
                 hello = {
                     "type": "hello",
+                    "public_ip": NODE_IP,
                     "port": P2P_PORT,
                     "node_id": NODE_ID,
                     "public_key": NODE_PUBLIC_KEY,
                     "signature": sign_message(NODE_ID),
-                    "public_ip": NODE_IP,
                     "version": VERSION,
                     "timestamp": time.time()
                 }
@@ -4311,7 +4313,7 @@ def handle_msg(msg, conn=None):
 
                     response = {
                         "type": "chain",
-                        "data": blockchain[-500:]
+                        "data": blockchain
                     }
 
                     conn.sendall(
@@ -5044,6 +5046,7 @@ def mine(addr):
         # =========================================
         # FINAL VALIDATION
         # =========================================
+        with blockchain_lock:
 
         # recheck chain
         if blockchain[-1]["hash"] != prev_hash:
