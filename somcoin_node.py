@@ -3348,6 +3348,61 @@ def request_peers():
             continue
 
 # ==================================================
+# 🌍 BOOTSTRAP PEERS
+# ==================================================
+def bootstrap_peers():
+
+    global p2p_peers
+
+    try:
+
+        for peer in list(SEED_NODES):
+
+            try:
+
+                if peer in p2p_peers:
+                    continue
+
+                ip, port = peer.split(":")
+                port = int(port)
+
+                s = socket.socket(
+                    socket.AF_INET,
+                    socket.SOCK_STREAM
+                )
+
+                s.settimeout(3)
+
+                result = s.connect_ex((ip, port))
+
+                s.close()
+
+                if result == 0:
+
+                    p2p_peers.add(
+                        f"{ip}:{port}"
+                    )
+
+                    print(
+                        f"🌐 Peer added: "
+                        f"{ip}:{port}"
+                    )
+
+            except Exception as e:
+
+                print(
+                    "❌ Peer connect error:",
+                    e
+                )
+
+    except Exception as e:
+
+        print(
+            "❌ Bootstrap error:",
+            e
+        )
+
+# ==================================================
 # 🌍 SMART DISCOVERY
 # ==================================================
 
