@@ -1236,74 +1236,117 @@ def load_data():
     global balances, referrals, leaderboard
 
     p2p_peers = set()
+    pending_transactions = []
 
     # ==============================
     # LOAD BLOCKCHAIN
     # ==============================
     if os.path.exists(BLOCKCHAIN_FILE):
+
         try:
+
             with open(BLOCKCHAIN_FILE, "r") as f:
                 data = json.load(f)
 
             if isinstance(data, list) and len(data) > 0:
+
                 blockchain = data
-                print("📦 Blockchain loaded:", len(blockchain), "blocks")
+
+                print(
+                    "📦 Blockchain loaded:",
+                    len(blockchain),
+                    "blocks"
+                )
+
             else:
+
                 print("⚠️ Blockchain empty")
 
         except Exception as e:
+
             print("❌ Blockchain load error:", e)
 
             # 🔧 AUTO RECOVERY
             try:
+
                 with open(BLOCKCHAIN_FILE, "r") as f:
                     raw = f.read()
 
                 cut = raw.rfind('},{"index":')
 
                 if cut != -1:
+
                     fixed = raw[:cut] + "]"
+
                     data = json.loads(fixed)
 
-                    if isinstance(data, list) and len(data) > 0:
+                    if (
+                        isinstance(data, list)
+                        and len(data) > 0
+                    ):
+
                         blockchain = data
-                        print("🛠 Recovered blocks:", len(blockchain))
+
+                        print(
+                            "🛠 Recovered blocks:",
+                            len(blockchain)
+                        )
 
             except Exception as e2:
+
                 print("❌ Recovery failed:", e2)
 
     # ==============================
     # LOAD MEMPOOL
     # ==============================
     if os.path.exists(MEMPOOL_FILE):
+
         try:
+
             with open(MEMPOOL_FILE) as f:
+
                 raw = f.read().strip()
 
                 if raw:
+
                     pending_transactions = json.loads(raw)
+
                 else:
 
-            print("📥 Mempool loaded:", len(pending_transactions))
+                    pending_transactions = []
+
+            print(
+                "📥 Mempool loaded:",
+                len(pending_transactions)
+            )
 
         except Exception as e:
+
             print("❌ Mempool load error:", e)
+
+            pending_transactions = []
 
     # ==============================
     # LOAD PEERS (SMART CLEAN 🔥)
     # ==============================
     if os.path.exists(PEERS_FILE):
+
         try:
+
             with open(PEERS_FILE) as f:
+
                 raw = f.read().strip()
 
                 if raw:
+
                     loaded = json.loads(raw)
 
                     cleaned = set()
 
                     for p in loaded:
+
                         try:
+
                             if not isinstance(p, str):
                                 continue
 
@@ -1311,21 +1354,24 @@ def load_data():
                                 continue
 
                             ip, port = p.split(":")
+
                             port = int(port)
 
                             # 🔒 FILTER INVALID
                             if (
-                                ip.startswith("127.") or
-                                ip.startswith("0.") or
-                                ip.startswith("255.") or
-                                ip == "0.0.0.0"
+                                ip.startswith("127.")
+                                or ip.startswith("0.")
+                                or ip.startswith("255.")
+                                or ip == "0.0.0.0"
                             ):
                                 continue
 
                             if port not in ALLOWED_PORTS:
                                 continue
 
-                            cleaned.add(f"{ip}:{port}")
+                            cleaned.add(
+                                f"{ip}:{port}"
+                            )
 
                         except:
                             continue
@@ -1333,32 +1379,53 @@ def load_data():
                     p2p_peers = cleaned
 
                 else:
+
                     p2p_peers = set()
 
         except Exception as e:
+
             print("❌ Peers load error:", e)
+
             p2p_peers = set()
 
-    print("🌐 Peers loaded:", len(p2p_peers))
+    print(
+        "🌐 Peers loaded:",
+        len(p2p_peers)
+    )
 
-    # 🔥 SAVE AFTER CLEAN (VERY IMPORTANT)
+    # 🔥 SAVE AFTER CLEAN
     save_peers_safe()
 
     # ==============================
     # LOAD EARN SYSTEM
     # ==============================
     if os.path.exists(EARN_FILE):
+
         try:
+
             with open(EARN_FILE) as f:
+
                 data = json.load(f)
 
-            balances = data.get("balances", {})
-            referrals = data.get("referrals", {})
-            leaderboard = data.get("leaderboard", {})
+            balances = data.get(
+                "balances",
+                {}
+            )
+
+            referrals = data.get(
+                "referrals",
+                {}
+            )
+
+            leaderboard = data.get(
+                "leaderboard",
+                {}
+            )
 
             print("💰 Earn system loaded")
 
         except Exception as e:
+
             print("❌ Earn load error:", e)
 
 # ==================================================
