@@ -184,8 +184,6 @@ PEER_TIMEOUT = 180   # 3 min (REALISTIC)
 # =========================
 peers_lock = threading.Lock()
 
-mempool_lock = threading.Lock()
-
 DNS_SEEDS = [
     "167.86.117.249",
     "23.94.66.117"
@@ -569,7 +567,7 @@ def bootstrap_peers():
     # =============================================
     # OWN IP
     # =============================================
-    my_ip = PUBLIC_IP
+    my_ip = NODE_IP
 
     # =============================================
     # MINIMAL SEEDS
@@ -625,8 +623,8 @@ def bootstrap_peers():
 
                         try:
 
-                            peer_ip = peer["ip"]
-                            peer_port = int(peer["port"])
+                            peer_ip, peer_port = peer.split(":")
+                            peer_port = int(peer_port)
 
                             # skip self
                             if peer_ip == my_ip:
@@ -736,8 +734,8 @@ def bootstrap_peers():
 
             try:
 
-                ip = peer["ip"]
-                port = peer["port"]
+                ip, port = peer.split(":")
+                port = int(port)
 
                 discovered = request_peers(
                     ip,
@@ -1089,6 +1087,7 @@ NETWORK_ID = "SOM_MAINNET_1"
 CREATED_YEAR = "2026"
 
 VERSION = "1.0.0"
+GENESIS_HASH = "0000daded77a0a728ae49fb702df712fbb4b"
 BLOCKCHAIN_FILE = "blockchain.json"
 MEMPOOL_FILE = "mempool.json"
 PEERS_FILE = "peers.json"
@@ -1236,8 +1235,6 @@ def load_data():
     global blockchain, pending_transactions, p2p_peers
     global balances, referrals, leaderboard
 
-    blockchain = []
-    pending_transactions = []
     p2p_peers = set()
 
     # ==============================
@@ -1286,13 +1283,11 @@ def load_data():
                 if raw:
                     pending_transactions = json.loads(raw)
                 else:
-                    pending_transactions = []
 
             print("📥 Mempool loaded:", len(pending_transactions))
 
         except Exception as e:
             print("❌ Mempool load error:", e)
-            pending_transactions = []
 
     # ==============================
     # LOAD PEERS (SMART CLEAN 🔥)
@@ -1451,12 +1446,6 @@ def adjust_difficulty():
             difficulty -= 1
 
         print("Difficulty decreased:", difficulty)
-# ==================================================
-# HASH
-# ==================================================
-def calculate_hash(index, prev_hash, timestamp, nonce, tx_str):
-    data = f"{index}{prev_hash}{timestamp}{nonce}{tx_str}"
-    return pow_hash(data)
 
 def sha(data):
     return hashlib.sha256(
@@ -1723,13 +1712,6 @@ def rebuild_utxo():
         f"utxos={len(utxo_set)} | "
         f"wallets={len(address_balances)}"
     )
-
-# =========================
-# TX HASH
-# =========================
-def tx_hash(tx):
-    data = json.dumps(tx, sort_keys=True).encode()
-    return hashlib.sha256(hashlib.sha256(data).digest()).hexdigest()
 
 
 # ==================================================
@@ -2972,8 +2954,6 @@ def verify_tx(tx, used_inputs=None):
         if fee > input_sum:
             return False
 
-        tx["fee"] = fee
-
         # =========================
         # FINAL
         # =========================
@@ -3039,11 +3019,16 @@ def chain_work(chain):
 # 🔒 FULL CHAIN VALIDATION
 # =========================
 def is_valid_full_chain(chain):
+
     try:
+
         # =========================
         # BASIC CHECK
         # =========================
-        if not isinstance(chain, list) or len(chain) == 0:
+        if not isinstance(chain, list):
+            return False
+
+        if len(chain) == 0:
             return False
 
         # =========================
@@ -3051,10 +3036,16 @@ def is_valid_full_chain(chain):
         # =========================
         genesis = chain[0]
 
+        # genesis index
         if genesis.get("index") != 0:
             return False
 
+        # genesis previous hash
         if genesis.get("previous_hash") != "0" * 64:
+            return False
+
+        # 🔥 REAL GENESIS VERIFY
+        if genesis.get("hash") != GENESIS_HASH:
             return False
 
         # =========================
@@ -3081,7 +3072,12 @@ def is_valid_full_chain(chain):
             # HASH CHECK 🔐
             # =========================
             try:
-                tx_str = json.dumps(b.get("transactions", []), sort_keys=True)
+
+                tx_str = json.dumps(
+                    b.get("transactions", []),
+                    sort_keys=True
+                )
+
             except:
                 return False
 
@@ -3099,22 +3095,37 @@ def is_valid_full_chain(chain):
             # =========================
             # DIFFICULTY CHECK ⛏
             # =========================
-            if not h.startswith("0" * b.get("difficulty", 1)):
+            difficulty = int(
+                b.get("difficulty", 1)
+            )
+
+            if not h.startswith(
+                "0" * difficulty
+            ):
                 return False
 
             # =========================
-            # TX VALIDATION + DOUBLE SPEND 🔥
+            # TX VALIDATION 🔥
             # =========================
             used_inputs = set()
 
             for tx in b.get("transactions", []):
-                if not verify_tx(tx, used_inputs):
+
+                if not verify_tx(
+                    tx,
+                    used_inputs
+                ):
                     return False
 
         return True
 
     except Exception as e:
-        print("❌ Chain validation error:", e)
+
+        print(
+            "❌ Chain validation error:",
+            e
+        )
+
         return False
 
 # ==================================================
@@ -3583,153 +3594,6 @@ def recv_msg(conn):
 
         return None
 
-# =========================================================
-# 🚀 ULTRA PRO MAX FINAL P2P CORE (FIXED 2026)
-# =========================================================
-
-from collections import deque
-import threading
-import hashlib
-import json
-import time
-import socket
-
-# =========================================================
-# ⚙️ CONFIG
-# =========================================================
-
-MAX_RECENT_TX = 10000
-MAX_RECENT_BLOCKS = 10000
-
-MAX_MESSAGE_SIZE = 1_000_000
-MAX_CHAIN_SIZE = 5000
-
-MIN_DIFFICULTY = 4
-MAX_FUTURE_TIME = 7200
-
-BAN_THRESHOLD = -10
-SOCKET_TIMEOUT = 10
-
-# =========================================================
-# 🔒 LOCKS
-# =========================================================
-
-recent_tx_lock = threading.Lock()
-recent_block_lock = threading.Lock()
-
-sync_lock = threading.Lock()
-chain_replace_lock = threading.Lock()
-
-# IMPORTANT
-blockchain_lock = threading.Lock()
-mempool_lock = threading.Lock()
-
-# =========================================================
-# 🚀 FAST CACHE SYSTEM
-# =========================================================
-
-recent_tx_ids = set()
-recent_tx_queue = deque(maxlen=MAX_RECENT_TX)
-
-recent_block_ids = set()
-recent_block_queue = deque(maxlen=MAX_RECENT_BLOCKS)
-
-# =========================================================
-# 🛡 SECURITY
-# =========================================================
-
-ip_reputation = {}
-banned_ips = set()
-
-sync_in_progress = False
-
-# =========================================================
-# 🔥 CHECKPOINTS
-# =========================================================
-
-CHECKPOINTS = {
-    0: None
-}
-
-# =========================================================
-# 🌐 GLOBALS
-# =========================================================
-
-blockchain = []
-pending_transactions = []
-
-# =========================================================
-# 🚀 SAFE SOCKET
-# =========================================================
-
-def setup_socket(conn):
-
-    try:
-        conn.settimeout(SOCKET_TIMEOUT)
-    except:
-        pass
-
-# =========================================================
-# 🚀 CACHE TX
-# =========================================================
-
-def add_recent_tx(txid):
-
-    with recent_tx_lock:
-
-        if txid in recent_tx_ids:
-            return
-
-        if len(recent_tx_queue) >= MAX_RECENT_TX:
-
-            old = recent_tx_queue.popleft()
-            recent_tx_ids.discard(old)
-
-        recent_tx_queue.append(txid)
-        recent_tx_ids.add(txid)
-
-# =========================================================
-# 🚀 CACHE BLOCK
-# =========================================================
-
-def add_recent_block(block_hash):
-
-    with recent_block_lock:
-
-        if block_hash in recent_block_ids:
-            return
-
-        if len(recent_block_queue) >= MAX_RECENT_BLOCKS:
-
-            old = recent_block_queue.popleft()
-            recent_block_ids.discard(old)
-
-        recent_block_queue.append(block_hash)
-        recent_block_ids.add(block_hash)
-
-# =========================================================
-# 🛡 REPUTATION SYSTEM
-# =========================================================
-
-def update_ip_reputation(ip, good=True):
-
-    if ip == "unknown":
-        return
-
-    if ip not in ip_reputation:
-        ip_reputation[ip] = 0
-
-    if good:
-        ip_reputation[ip] += 1
-    else:
-        ip_reputation[ip] -= 3
-
-    # AUTO BAN
-    if ip_reputation[ip] <= BAN_THRESHOLD:
-
-        banned_ips.add(ip)
-
-        print(f"🚫 AUTO BANNED: {ip}")
 
 # =========================================================
 # 🛡 SPAM CHECK
@@ -3930,379 +3794,6 @@ def safe_validate_block(block):
         print("❌ validate block error:", e)
 
         return False
-
-# =========================================================
-# 🔥 FULL CHAIN VALIDATION
-# =========================================================
-
-def validate_chain(chain):
-
-    try:
-
-        if not isinstance(chain, list):
-            return False
-
-        if len(chain) == 0:
-            return False
-
-        # anti memory attack
-        if len(chain) > MAX_CHAIN_SIZE:
-            return False
-
-        # =====================================================
-        # GENESIS CHECK
-        # =====================================================
-
-        if chain[0]["index"] != 0:
-            return False
-
-        expected_genesis = CHECKPOINTS.get(0)
-
-        if expected_genesis:
-
-            if chain[0]["hash"] != expected_genesis:
-                return False
-
-        # =====================================================
-        # CONTINUITY VERIFY
-        # =====================================================
-
-        for i in range(1, len(chain)):
-
-            current = chain[i]
-            previous = chain[i - 1]
-
-            # previous hash
-            if (
-                current["previous_hash"]
-                != previous["hash"]
-            ):
-                return False
-
-            # index continuity
-            if (
-                current["index"]
-                != previous["index"] + 1
-            ):
-                return False
-
-            # validate block
-            if not safe_validate_block(current):
-                return False
-
-        return True
-
-    except Exception as e:
-
-        print("❌ validate_chain error:", e)
-
-        return False
-
-# =========================================================
-# 🔥 SAFE CHAIN REPLACEMENT
-# =========================================================
-
-def rebuild_utxo():
-
-    print("🔄 rebuilding utxo...")
-
-def save_data():
-
-    print("💾 saving blockchain...")
-
-
-# =========================================================
-# 🚀 SEND MSG
-# =========================================================
-
-def send_msg(conn, data):
-
-    try:
-
-        msg = json.dumps(data) + "\n"
-
-        conn.sendall(msg.encode())
-
-    except:
-        pass
-
-# =========================================================
-# 🚀 BROADCAST
-# =========================================================
-
-def p2p_broadcast(msg):
-
-    print("📡 broadcasting:", msg.get("type"))
-
-# =========================================================
-# 🚀 PEER ALIVE
-# =========================================================
-
-def mark_peer_alive(peer):
-
-    pass
-
-# =========================================================
-# 🚀 HANDLE P2P MESSAGE
-# =========================================================
-
-def handle_msg(msg, conn):
-
-    global blockchain
-    global pending_transactions
-
-    try:
-
-        setup_socket(conn)
-
-        # =====================================================
-        # SAFE IP
-        # =====================================================
-
-        try:
-            ip = conn.getpeername()[0]
-        except:
-            ip = "unknown"
-
-        # =====================================================
-        # BAN CHECK
-        # =====================================================
-
-        if ip in banned_ips:
-            return
-
-        # =====================================================
-        # ANTI SPAM
-        # =====================================================
-
-        if is_spam(ip):
-            return
-
-        # =====================================================
-        # SAFE PARSE
-        # =====================================================
-
-        if isinstance(msg, str):
-
-            if len(msg) > MAX_MESSAGE_SIZE:
-
-                update_ip_reputation(ip, False)
-
-                return
-
-            try:
-
-                data = json.loads(msg)
-
-            except:
-
-                update_ip_reputation(ip, False)
-
-                return
-
-        else:
-
-            data = msg
-
-        if not isinstance(data, dict):
-            return
-
-        msg_type = data.get("type")
-
-        if not msg_type:
-            return
-
-        # =====================================================
-        # 💸 TX
-        # =====================================================
-
-        if msg_type == "tx":
-
-            tx = data.get("data")
-
-            if not isinstance(tx, dict):
-                return
-
-            try:
-
-                txid = tx_hash(tx)
-
-            except:
-                return
-
-            # duplicate cache
-            with recent_tx_lock:
-
-                if txid in recent_tx_ids:
-                    return
-
-            # verify tx
-            if not verify_tx(tx):
-
-                update_ip_reputation(ip, False)
-
-                return
-
-            with mempool_lock:
-
-                # duplicate mempool
-                for t in pending_transactions:
-
-                    try:
-
-                        if tx_hash(t) == txid:
-                            return
-
-                    except:
-                        continue
-
-                pending_transactions.append(tx)
-
-            add_recent_tx(txid)
-
-            update_ip_reputation(ip, True)
-
-            print(f"💸 tx accepted {txid[:20]}")
-
-        # =====================================================
-        # 📦 BLOCK
-        # =====================================================
-
-        elif msg_type == "compact_block":
-
-            block = data.get("data")
-
-            if not isinstance(block, dict):
-                return
-
-            block_hash = block.get("hash")
-
-            if not block_hash:
-                return
-
-            # duplicate cache
-            with recent_block_lock:
-
-                if block_hash in recent_block_ids:
-                    return
-
-            # validate
-            if not safe_validate_block(block):
-
-                update_ip_reputation(ip, False)
-
-                return
-
-            with blockchain_lock:
-
-                if blockchain:
-
-                    last = blockchain[-1]
-
-                    # fork detect
-                    if (
-                        block["previous_hash"]
-                        != last["hash"]
-                    ):
-
-                        print("⚠️ fork detected")
-
-                        start_sync()
-
-                        return
-
-                    # index verify
-                    if (
-                        block["index"]
-                        != last["index"] + 1
-                    ):
-                        return
-
-                blockchain.append(block)
-
-            add_recent_block(block_hash)
-
-            try:
-                rebuild_utxo()
-            except:
-                pass
-
-            try:
-                save_data()
-            except:
-                pass
-
-            update_ip_reputation(ip, True)
-
-            p2p_broadcast({
-                "type": "inv",
-                "data": [{
-                    "type": "block",
-                    "id": block_hash
-                }]
-            })
-
-            print(
-                f"✅ block accepted "
-                f"| height={block['index']}"
-            )
-
-        # =====================================================
-        # 🔄 CHAIN
-        # =====================================================
-
-        elif msg_type == "chain":
-
-            new_blocks = data.get("data", [])
-
-            if not isinstance(new_blocks, list):
-                return
-
-            if not new_blocks:
-                return
-
-            success = safe_replace_chain(
-                new_blocks
-            )
-
-            if success:
-
-                update_ip_reputation(ip, True)
-
-            else:
-
-                update_ip_reputation(ip, False)
-
-        # =====================================================
-        # ❤️ PING
-        # =====================================================
-
-        elif msg_type == "ping":
-
-            send_msg(conn, {
-                "type": "pong"
-            })
-
-        # =====================================================
-        # 💚 PONG
-        # =====================================================
-
-        elif msg_type == "pong":
-
-            try:
-
-                mark_peer_alive(ip)
-
-            except:
-                pass
-
-    except socket.timeout:
-
-        print("⏰ socket timeout")
-
-    except Exception as e:
-
-        print("❌ P2P error:", e)
 
 
 # =========================
@@ -4752,7 +4243,6 @@ def get_txs(address):
 # GLOBAL LOCKS + STATE
 # ==================================================
 mining_lock = threading.Lock()
-blockchain_lock = threading.Lock()
 mempool_lock = threading.Lock()
 
 last_mine_time = 0
@@ -5099,10 +4589,6 @@ def mine(addr):
 
             "difficulty": difficulty,
 
-            "merkle_root": merkle_root,
-
-            "miner": addr,
-
             "hash": mined_hash
         }
 
@@ -5205,7 +4691,7 @@ def mine(addr):
 
             "fees": total_fees,
 
-            "difficulty": difficulty,
+            "difficulty": dynamic_difficulty(),
 
             "txs": len(block_txs),
 
@@ -5357,17 +4843,6 @@ def get_public_ip():
 
 # ✅ FINAL NODE IP
 NODE_IP = os.getenv("NODE_IP", get_public_ip())
-# ==================================================
-# 🌍 PUBLIC IP
-# ==================================================
-
-PUBLIC_IP = get_public_ip()
-
-# ✅ FINAL NODE IP
-NODE_IP = os.getenv(
-    "NODE_IP",
-    PUBLIC_IP
-)
 
 
 # ==================================================
@@ -5700,7 +5175,7 @@ def stats_api():
         "network": NETWORK_NAME,
         "blocks": blocks,
         "mempool": mempool,
-        "difficulty": difficulty,
+        "difficulty": dynamic_difficulty(),
         "supply": total_supply()
     })
 
