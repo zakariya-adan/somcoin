@@ -75,31 +75,31 @@ def dynamic_difficulty():
 
     with blockchain_lock:
 
-    # =========================
-    # EMPTY CHAIN PROTECTION
-    # =========================
-    if len(blockchain) == 0:
-        return MIN_DIFFICULTY
+        # =========================
+        # EMPTY CHAIN PROTECTION
+        # =========================
+        if len(blockchain) == 0:
+            return MIN_DIFFICULTY
 
-    # =========================
-    # REAL CONSENSUS DIFFICULTY
-    # =========================
-    # ✅ difficulty MUST depend ONLY
-    # on blockchain history
-    # ❌ NEVER peer count
-    # =========================
-    difficulty = get_new_difficulty(blockchain)
+        # =========================
+        # REAL CONSENSUS DIFFICULTY
+        # =========================
+        # ✅ difficulty MUST depend ONLY
+        # on blockchain history
+        # ❌ NEVER peer count
+        # =========================
+        difficulty = get_new_difficulty(blockchain)
 
-    # =========================
-    # SAFETY LIMITS
-    # =========================
-    if difficulty < MIN_DIFFICULTY:
-        difficulty = MIN_DIFFICULTY
+        # =========================
+        # SAFETY LIMITS
+        # =========================
+        if difficulty < MIN_DIFFICULTY:
+            difficulty = MIN_DIFFICULTY
 
-    if difficulty > MAX_DIFFICULTY:
-        difficulty = MAX_DIFFICULTY
+        if difficulty > MAX_DIFFICULTY:
+            difficulty = MAX_DIFFICULTY
 
-    return difficulty
+        return difficulty
 
 # ==================================================
 # 🌍 P2P CONFIG (PRO GLOBAL - REAL BITCOIN STYLE 🚀)
