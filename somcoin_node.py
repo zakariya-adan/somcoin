@@ -112,7 +112,7 @@ import threading
 # 🔥 SCALE (SMART SYSTEM)
 # =========================
 MAX_PEERS = 1000
-MAX_ACTIVE_PEERS = 64   # ⚠️ VERY IMPORTANT
+MAX_ACTIVE_PEERS = 20   # ⚠️ VERY IMPORTANT
 
 p2p_peers = set()
 peer_ips = set()
@@ -3806,7 +3806,8 @@ def random_bootstrap():
             pass
 
 # ==================================================
-# 🚀 START BACKGROUND SERVICES (ULTRA PRO MAX)
+# 🚀 START BACKGROUND SERVICES
+# (BITCOIN STYLE + CLEAN FINAL 🔥)
 # ==================================================
 
 def start_background_services():
@@ -3841,17 +3842,17 @@ def start_background_services():
 
         # 🔄 Auto blockchain sync
         ("auto_sync", auto_sync),
-
-        # 🧱 Resolve orphan blocks
-        ("auto_resolve_orphans", auto_resolve_orphans),
-
-        # ⚙️ Background maintenance
-        ("background_init", background_init),
     ]
+
+    started = set()
 
     for name, target in services:
 
         try:
+
+            # 🚫 prevent duplicate thread start
+            if name in started:
+                continue
 
             threading.Thread(
                 target=target,
@@ -3859,13 +3860,119 @@ def start_background_services():
                 name=name
             ).start()
 
+            started.add(name)
+
             print(f"✅ Started: {name}")
 
         except Exception as e:
 
-            print(f"❌ Failed to start {name}: {e}")
+            print(
+                f"❌ Failed to start {name}:",
+                e
+            )
 
-    print("🚀 All background services running")
+    print("🔥 All background services running")
+
+# ==================================================
+# 📩 HANDLE MESSAGE
+# ==================================================
+def handle_msg(msg, conn=None):
+
+    try:
+
+        if not isinstance(msg, dict):
+            return
+
+        msg_type = msg.get("type")
+
+        # =====================================
+        # HELLO
+        # =====================================
+        if msg_type == "hello":
+
+            peer_ip = msg.get("public_ip")
+            peer_port = msg.get("port", P2P_PORT)
+
+            if peer_ip:
+                add_peer_safe(peer_ip, peer_port)
+
+        # =====================================
+        # TX
+        # =====================================
+        elif msg_type == "tx":
+
+            tx = msg.get("data")
+
+            if tx and verify_tx(tx):
+
+                pending_transactions.append(tx)
+
+        # =====================================
+        # BLOCK
+        # =====================================
+        elif msg_type == "block":
+
+            block = msg.get("data")
+
+            if block:
+
+                with blockchain_lock:
+
+                    if validate_block(block, blockchain):
+
+                        blockchain.append(block)
+
+                        update_utxo(block)
+
+                        save_data()
+
+                        print(
+                            "✅ Block accepted:",
+                            block["index"]
+                        )
+
+        # =====================================
+        # GET PEERS
+        # =====================================
+        elif msg_type == "get_peers":
+
+            if conn:
+
+                response = {
+                    "type": "peers",
+                    "data": list(p2p_peers)
+                }
+
+                conn.sendall(
+                    (
+                        json.dumps(response)
+                        + "\n"
+                    ).encode()
+                )
+
+        # =====================================
+        # PEERS
+        # =====================================
+        elif msg_type == "peers":
+
+            peers = msg.get("data", [])
+
+            for peer in peers:
+
+                try:
+
+                    ip, port = peer.split(":")
+                    add_peer_safe(ip, int(port))
+
+                except:
+                    pass
+
+    except Exception as e:
+
+        print(
+            "⚠️ handle_msg error:",
+            e
+        )
 
 # ==================================================
 # P2P SERVER (FINAL PRO - ULTRA STABLE + SECURE 🔥)
@@ -4782,6 +4889,23 @@ def peers_api():
     return jsonify({
         "peers": list(p2p_peers)[:100]
     })
+
+# ==================================================
+# ⛏ HASHRATE
+# ==================================================
+def calculate_hashrate():
+
+    try:
+
+        diff = dynamic_difficulty()
+
+        rate = (2 ** diff) / TARGET_BLOCK_TIME
+
+        return round(rate, 2)
+
+    except:
+
+        return 0
 
 # ==================================================
 # API INFO
