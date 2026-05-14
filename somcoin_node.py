@@ -6401,8 +6401,8 @@ if __name__ == "__main__":
     )
 
     start_thread(
-        dns_bootstrap,
-        "DNS Discovery"
+        bootstrap_peers,
+        "Peer Bootstrap"
     )
 
     start_thread(
