@@ -3509,6 +3509,29 @@ def request_peers():
             continue
 
 # ==================================================
+# 🌍 SMART DISCOVERY
+# ==================================================
+
+def smart_discovery():
+
+    while True:
+
+        try:
+
+            bootstrap_peers()
+
+            request_peers()
+
+        except Exception as e:
+
+            print(
+                "Discovery error:",
+                e
+            )
+
+        time.sleep(30)
+
+# ==================================================
 # SAFE MULTI MESSAGE HANDLER
 # ==================================================
 def safe_handle(data, conn):
@@ -5334,6 +5357,17 @@ def get_public_ip():
 
 # ✅ FINAL NODE IP
 NODE_IP = os.getenv("NODE_IP", get_public_ip())
+# ==================================================
+# 🌍 PUBLIC IP
+# ==================================================
+
+PUBLIC_IP = get_public_ip()
+
+# ✅ FINAL NODE IP
+NODE_IP = os.getenv(
+    "NODE_IP",
+    PUBLIC_IP
+)
 
 
 # ==================================================
