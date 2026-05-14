@@ -3781,29 +3781,101 @@ def sign_message(message):
     h = hashlib.sha256(message.encode()).digest()
     return node_sk.sign(h).hex()
 
-
+# ==================================================
+# 🌍 RANDOM BOOTSTRAP (FINAL FIXED)
+# ==================================================
 def random_bootstrap():
-    if not p2p_peers:
-        return  # ❗ avoid crash haddii peers jiro la'aan
 
-    for peer in random.sample(list(p2p_peers), min(5, len(p2p_peers))):
-        try:
-            ip, port = peer.split(":")
-            s = socket.socket()
-            s.settimeout(3)
-            s.connect((ip, int(port)))
+    try:
 
-            s.sendall((json.dumps({
-                "type": "hello",
-                "port": P2P_PORT,
-                "node_id": NODE_ID,
-                "public_key": NODE_PUBLIC_KEY,
-                "signature": sign_message(NODE_ID)
-            }) + "\n").encode())
+        # 🚫 no peers
+        if not p2p_peers:
+            return
 
-            s.close()
-        except:
-            pass
+        peers = list(p2p_peers)
+
+        # 🔒 limit peers
+        peers = peers[:5]
+
+        for peer in peers:
+
+            try:
+
+                if ":" not in peer:
+                    continue
+
+                ip, port = peer.split(":")
+                port = int(port)
+
+                # 🚫 skip self
+                if (
+                    ip == NODE_IP
+                    and port == P2P_PORT
+                ):
+                    continue
+
+                # 🚫 banned
+                if is_banned(ip):
+                    continue
+
+                # =========================
+                # CONNECT
+                # =========================
+                s = socket.socket(
+                    socket.AF_INET,
+                    socket.SOCK_STREAM
+                )
+
+                s.settimeout(3)
+
+                result = s.connect_ex((ip, port))
+
+                # ❌ failed
+                if result != 0:
+                    s.close()
+                    continue
+
+                # =========================
+                # SEND HELLO
+                # =========================
+                hello = {
+                    "type": "hello",
+                    "port": P2P_PORT,
+                    "node_id": NODE_ID,
+                    "public_key": NODE_PUBLIC_KEY,
+                    "signature": sign_message(NODE_ID),
+                    "public_ip": NODE_IP,
+                    "version": VERSION,
+                    "timestamp": time.time()
+                }
+
+                s.sendall(
+                    (
+                        json.dumps(hello)
+                        + "\n"
+                    ).encode()
+                )
+
+                # ✅ mark alive
+                mark_peer_alive(peer)
+
+                s.close()
+
+            except Exception as e:
+
+                punish_peer(peer)
+
+        print(
+            f"🌍 Random bootstrap done "
+            f"| peers={len(p2p_peers)}"
+        )
+
+    except Exception as e:
+
+        print(
+            "❌ Random bootstrap error:",
+            e
+        )
 
 # ==================================================
 # 🚀 START BACKGROUND SERVICES
@@ -4897,14 +4969,16 @@ def calculate_hashrate():
 
     try:
 
-        diff = dynamic_difficulty()
+        if len(blockchain) < 2:
+            return 0
 
-        rate = (2 ** diff) / TARGET_BLOCK_TIME
+        latest = blockchain[-1]
 
-        return round(rate, 2)
+        difficulty = latest.get("difficulty", 1)
+
+        return round((2 ** difficulty) / TARGET_BLOCK_TIME, 2)
 
     except:
-
         return 0
 
 # ==================================================
