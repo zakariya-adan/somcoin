@@ -5048,22 +5048,22 @@ def mine(addr):
         # =========================================
         with blockchain_lock:
 
-        # recheck chain
-        if blockchain[-1]["hash"] != prev_hash:
+            # recheck chain
+            if blockchain[-1]["hash"] != prev_hash:
 
-           return jsonify({
-               "error": "stale block"
-           })
+               return jsonify({
+                   "error": "stale block"
+               })
 
-        # validate block
-        if not safe_validate_block(block):
+            # validate block
+            if not safe_validate_block(block):
 
-           return jsonify({
-               "error": "invalid block"
-           })
+               return jsonify({
+                   "error": "invalid block"
+               })
 
-        # add block
-        add_block_to_chain(block)
+            # add block
+            add_block_to_chain(block)
 
         # =========================================
         # CLEAN MEMPOOL
