@@ -4416,40 +4416,59 @@ def start_background_services():
 
     print("🚀 Starting background services...")
 
-    # 🌐 Network sync
-    threading.Thread(target=sync_headers, daemon=True).start()
+    services = [
 
-    # 🔄 Peer rotation (keep best peers only)
-    threading.Thread(target=rotate_peers, daemon=True).start()
+        # 🔄 Peer rotation
+        ("rotate_peers", rotate_peers),
 
-    # 🧹 Remove dead peers
-    threading.Thread(target=clean_dead_peers, daemon=True).start()
+        # 🧹 Remove dead peers
+        ("clean_dead_peers", clean_dead_peers),
 
-    # ❤️ Keep peers alive
-    threading.Thread(target=ping_peers, daemon=True).start()
+        # ❤️ Keep peers alive
+        ("ping_peers", ping_peers),
 
-    # 🔍 Discover new peers
-    threading.Thread(target=smart_discovery, daemon=True).start()
+        # 📡 Share peers
+        ("gossip_peers", gossip_peers),
 
-    # 📡 Share peers with network
-    threading.Thread(target=gossip_peers, daemon=True).start()
+        # 🧠 Ensure minimum peers
+        ("ensure_minimum_peers", ensure_minimum_peers),
 
-    # 🌍 DNS bootstrap
-    threading.Thread(target=dns_bootstrap, daemon=True).start()
+        # 🌱 Auto expand seeds
+        ("auto_seed_expand", auto_seed_expand),
 
-    # 🧠 Ensure minimum peers (auto recovery)
-    threading.Thread(target=ensure_minimum_peers, daemon=True).start()
+        # ⚖️ Smart seed control
+        ("auto_seed_control", auto_seed_control),
 
-    # 🌱 Auto expand seeds
-    threading.Thread(target=auto_seed_expand, daemon=True).start()
+        # 🧼 Clean mempool
+        ("auto_clean_mempool", auto_clean_mempool),
 
-    # ⚖️ Smart seed control
-    threading.Thread(target=auto_seed_control, daemon=True).start()
+        # 🔄 Auto blockchain sync
+        ("auto_sync", auto_sync),
 
-    # 🧼 Clean mempool
-    threading.Thread(target=auto_clean_mempool, daemon=True).start()
+        # 🧱 Resolve orphan blocks
+        ("auto_resolve_orphans", auto_resolve_orphans),
 
-    print("✅ All background services started")
+        # ⚙️ Background maintenance
+        ("background_init", background_init),
+    ]
+
+    for name, target in services:
+
+        try:
+
+            threading.Thread(
+                target=target,
+                daemon=True,
+                name=name
+            ).start()
+
+            print(f"✅ Started: {name}")
+
+        except Exception as e:
+
+            print(f"❌ Failed to start {name}: {e}")
+
+    print("🚀 All background services running")
 
 # ==================================================
 # P2P SERVER (FINAL PRO - ULTRA STABLE + SECURE 🔥)
