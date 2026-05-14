@@ -552,255 +552,6 @@ def resolve_dns_seeds():
 
 
 # ==================================================
-# 🌍 DECENTRALIZED BOOTSTRAP (BITCOIN STYLE PRO)
-# ==================================================
-
-def bootstrap_peers():
-
-    global p2p_peers
-
-    added = 0
-    failed = 0
-
-    print("🌍 Starting decentralized bootstrap...")
-
-    # =============================================
-    # OWN IP
-    # =============================================
-    my_ip = NODE_IP
-
-    # =============================================
-    # MINIMAL SEEDS
-    # Bitcoin style:
-    # only few stable seeds
-    # =============================================
-    seed_nodes = [
-
-        ("167.86.117.249", 9334),
-        ("23.94.66.117", 9334),
-    ]
-
-    # =============================================
-    # CONNECT TO SEEDS
-    # =============================================
-    for ip, port in seed_nodes:
-
-        try:
-
-            # skip self
-            if ip == my_ip:
-                continue
-
-            # add peer
-            ok = add_peer_safe(
-                ip,
-                port
-            )
-
-            if ok:
-
-                added += 1
-
-                print(
-                    f"✅ Seed connected: "
-                    f"{ip}:{port}"
-                )
-
-                # =================================
-                # ASK PEERS FROM SEED
-                # =================================
-                try:
-
-                    peers = request_peers(
-                        ip,
-                        port
-                    )
-
-                    # =============================
-                    # ADD DISCOVERED PEERS
-                    # =============================
-                    for peer in peers:
-
-                        try:
-
-                            peer_ip, peer_port = peer.split(":")
-                            peer_port = int(peer_port)
-
-                            # skip self
-                            if peer_ip == my_ip:
-                                continue
-
-                            # skip localhost
-                            if peer_ip.startswith("127."):
-                                continue
-
-                            # skip invalid
-                            if (
-                                peer_port <= 0 or
-                                peer_port > 65535
-                            ):
-                                continue
-
-                            # add discovered peer
-                            if add_peer_safe(
-                                peer_ip,
-                                peer_port
-                            ):
-
-                                added += 1
-
-                                print(
-                                    f"🌐 Discovered: "
-                                    f"{peer_ip}:{peer_port}"
-                                )
-
-                        except:
-                            continue
-
-                except Exception as e:
-
-                    print(
-                        f"⚠️ Peer discovery failed: "
-                        f"{e}"
-                    )
-
-            else:
-
-                failed += 1
-
-        except Exception as e:
-
-            failed += 1
-
-            print(
-                f"❌ Seed failed: "
-                f"{ip}:{port} | {e}"
-            )
-
-    # =============================================
-    # DNS DISCOVERY
-    # =============================================
-    dns_seeds = [
-
-        "seed.somcoin.net",
-        "dnsseed.somcoin.net"
-    ]
-
-    for host in dns_seeds:
-
-        try:
-
-            ips = socket.gethostbyname_ex(
-                host
-            )[2]
-
-            for ip in ips:
-
-                try:
-
-                    if ip == my_ip:
-                        continue
-
-                    if add_peer_safe(
-                        ip,
-                        9334
-                    ):
-
-                        added += 1
-
-                        print(
-                            f"🌍 DNS peer: "
-                            f"{ip}:9334"
-                        )
-
-                except:
-                    continue
-
-        except Exception as e:
-
-            print(
-                f"⚠️ DNS seed failed: "
-                f"{host} | {e}"
-            )
-
-    # =============================================
-    # PEER EXCHANGE
-    # =============================================
-    try:
-
-        current = list(p2p_peers)
-
-        for peer in current:
-
-            try:
-
-                ip, port = peer.split(":")
-                port = int(port)
-
-                discovered = request_peers(
-                    ip,
-                    port
-                )
-
-                for p in discovered:
-
-                    try:
-
-                        new_ip = p["ip"]
-                        new_port = int(
-                            p["port"]
-                        )
-
-                        if new_ip == my_ip:
-                            continue
-
-                        if add_peer_safe(
-                            new_ip,
-                            new_port
-                        ):
-
-                            added += 1
-
-                    except:
-                        continue
-
-            except:
-                continue
-
-    except Exception as e:
-
-        print(
-            f"⚠️ Peer exchange failed: "
-            f"{e}"
-        )
-
-    # =============================================
-    # FINAL STATUS
-    # =============================================
-    print(
-        f"🚀 Decentralized bootstrap complete | "
-        f"peers={len(p2p_peers)} "
-        f"added={added} "
-        f"failed={failed}"
-    )
-
-    return added
-
-    # =========================================
-    # FINAL STATUS
-    # =========================================
-    print(
-        f"🚀 Bootstrap complete | "
-        f"added={added} "
-        f"failed={failed}"
-    )
-
-    # =========================================
-    # RETURN
-    # =========================================
-    return added
-
-# ==================================================
 # 🔥 ENSURE MINIMUM PEERS
 # ==================================================
 def ensure_minimum_peers():
@@ -1087,7 +838,7 @@ NETWORK_ID = "SOM_MAINNET_1"
 CREATED_YEAR = "2026"
 
 VERSION = "1.0.0"
-GENESIS_HASH = "0000daded77a0a728ae49fb702df712fbb4b"
+GENESIS_HASH = "2821c43e2e2c1cdbf39989624dbc33b1b9d4e5c962f9f86814c44e49361f9b5f"
 BLOCKCHAIN_FILE = "blockchain.json"
 MEMPOOL_FILE = "mempool.json"
 PEERS_FILE = "peers.json"
@@ -3194,10 +2945,9 @@ def is_valid_full_chain(chain):
         )
 
         return False
-
 # ==================================================
 # 🚀 BETTER CHAIN
-# (ULTRA PRO MAX 🔥)
+# (ULTRA PRO MAX 🔥 FIXED)
 # ==================================================
 def better_chain(new_chain):
 
@@ -3227,15 +2977,28 @@ def better_chain(new_chain):
 
         if genesis.get("index") != 0:
 
-            print("❌ Reject: bad genesis")
+            print("❌ Reject: bad genesis index")
+
+            return False
+
+        if genesis.get("previous_hash") != "0" * 64:
+
+            print("❌ Reject: bad genesis previous hash")
+
+            return False
+
+        # 🔥 REAL GENESIS CHECK
+        if genesis.get("hash") != GENESIS_HASH:
+
+            print("❌ Reject: wrong genesis hash")
 
             return False
 
         # =========================
         # LOCAL INFO
         # =========================
-        local_height = len(blockchain)
-        new_height = len(new_chain)
+        local_height = max(0, len(blockchain) - 1)
+        new_height = max(0, len(new_chain) - 1)
 
         local_work = chain_work(blockchain)
         new_work = chain_work(new_chain)
@@ -3250,7 +3013,6 @@ def better_chain(new_chain):
 
         # =========================
         # FAST SYNC MODE 🔥
-        # huge chains validate partial
         # =========================
         if new_height > 5000:
 
@@ -3258,23 +3020,22 @@ def better_chain(new_chain):
 
             try:
 
-                sample_chain = []
+                # 🔥 only verify latest blocks
+                recent_blocks = new_chain[-500:]
 
-                # genesis
-                sample_chain.append(new_chain[0])
+                # verify chain links
+                for i in range(1, len(recent_blocks)):
 
-                # last 500 blocks
-                sample_chain.extend(
-                    new_chain[-500:]
-                )
+                    b = recent_blocks[i]
+                    prev = recent_blocks[i - 1]
 
-                if not is_valid_full_chain(sample_chain):
+                    if b.get("previous_hash") != prev.get("hash"):
 
-                    print(
-                        "❌ Fast validation failed"
-                    )
+                        print("❌ Fast sync link fail")
 
-                    return False
+                        return False
+
+                print("✅ Fast sync validation passed")
 
             except Exception as e:
 
@@ -5885,8 +5646,6 @@ if __name__ == "__main__":
     # CONNECT SEEDS
     # =========================
     try:
-
-        bootstrap_peers()
 
         print(
             f"✅ Connected peers "
