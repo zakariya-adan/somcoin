@@ -6291,7 +6291,7 @@ if __name__ == "__main__":
     # =========================
     try:
 
-        connect_seed_nodes()
+        bootstrap_peers()
 
         print(
             f"✅ Connected peers "
@@ -6312,7 +6312,7 @@ if __name__ == "__main__":
 
         request_peers()
 
-        request_chain()
+        # request_chain()
 
         print(
             "✅ Requested peer data"
@@ -6475,7 +6475,7 @@ if __name__ == "__main__":
                         "→ reconnecting..."
                     )
 
-                    connect_seed_nodes()
+                    bootstrap_peers()
 
                 # recreate genesis
                 if len(blockchain) == 0:
