@@ -27,7 +27,7 @@ def get_template():
 
     r = requests.get(
         f"{NODE_URL}/get_block_template?address={ADDRESS}",
-        timeout=10
+        timeout=120
     )
 
     return r.json()
