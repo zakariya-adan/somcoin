@@ -6029,7 +6029,7 @@ def auto_sync():
             peers = get_best_peers(10)
 
             if not peers:
-                time.sleep(5)
+                time.sleep(30)
                 continue
 
             # =========================
