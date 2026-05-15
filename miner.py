@@ -77,7 +77,7 @@ def mine():
                 # CHECK NEW BLOCK EVERY 2 SEC
                 # ==========================================
 
-                if nonce % 50000 == 0:
+                if nonce % 500000 == 0:
 
                     try:
 
@@ -110,7 +110,7 @@ def mine():
                 # HASHRATE
                 # ==========================================
 
-                if hashes % 10000 == 0:
+                if hashes % 100000 == 0:
 
                     elapsed = time.time() - start
 
