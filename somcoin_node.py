@@ -1378,7 +1378,8 @@ def create_genesis():
                 )
 
                 # rebuild state
-                rebuild_utxo()
+                if not utxo_set:
+                    rebuild_utxo()
 
                 return
 
@@ -1439,7 +1440,8 @@ def create_genesis():
     # =========================
     # BUILD UTXO STATE
     # =========================
-    rebuild_utxo()
+    if not utxo_set:
+        rebuild_utxo()
 
     # =========================
     # SAVE TO DISK
@@ -4945,7 +4947,7 @@ def mine(addr):
         # =========================================
         # MULTI CPU MINING
         # =========================================
-        cpu_count = multiprocessing.cpu_count()
+        cpu_count = max(1, multiprocessing.cpu_count() // 2)
 
         with multiprocessing.Pool(
             cpu_count
