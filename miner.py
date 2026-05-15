@@ -1,40 +1,125 @@
+# =========================================================
+# 🚀 ULTRA PRO MAX FINAL MINER (2026)
+# =========================================================
+
 import requests
 import hashlib
 import time
 import json
+import gc
 
-# ==========================================
-# CONFIG
-# ==========================================
+# =========================================================
+# 🚀 PERFORMANCE
+# =========================================================
+
+gc.disable()
+
+session = requests.Session()
+
+# =========================================================
+# ⚙️ CONFIG
+# =========================================================
 
 NODE_URL = "http://127.0.0.1:9443"
+
 ADDRESS = "SOMGjFnfFWcFTTc7HsftBXdQP4wSDgYyE"
 
-# ==========================================
-# DOUBLE SHA256
-# ==========================================
+HASH_UPDATE_INTERVAL = 1_000_000
+
+TEMPLATE_REFRESH_NONCE = 500_000
+
+REQUEST_TIMEOUT = 30
+
+# =========================================================
+# 🔥 DOUBLE SHA256
+# =========================================================
 
 def double_sha256(data):
+
     return hashlib.sha256(
-        hashlib.sha256(data.encode()).digest()
+        hashlib.sha256(
+            data.encode()
+        ).digest()
     ).hexdigest()
 
-# ==========================================
-# GET TEMPLATE
-# ==========================================
+
+# =========================================================
+# 📦 GET BLOCK TEMPLATE
+# =========================================================
 
 def get_template():
 
-    r = requests.get(
+    r = session.get(
         f"{NODE_URL}/get_block_template?address={ADDRESS}",
-        timeout=120
+        timeout=REQUEST_TIMEOUT
     )
 
     return r.json()
 
-# ==========================================
-# MINER
-# ==========================================
+
+# =========================================================
+# 🚀 SEND HASHRATE
+# =========================================================
+
+def send_hashrate(hr, shares):
+
+    try:
+
+        session.post(
+            "https://somcoin.online/submit_miner",
+            json={
+                "address": ADDRESS,
+                "hashrate": hr,
+                "shares": shares
+            },
+            timeout=5
+        )
+
+    except:
+        pass
+
+
+# =========================================================
+# 🚀 SUBMIT BLOCK
+# =========================================================
+
+def submit_block(block):
+
+    try:
+
+        r = session.post(
+            f"{NODE_URL}/submit_block",
+
+            # IMPORTANT FIX
+            json=block,
+
+            timeout=REQUEST_TIMEOUT
+        )
+
+        print("STATUS:", r.status_code)
+        print("TEXT:", r.text)
+
+        try:
+            return r.json()
+        except:
+            return {
+                "success": False,
+                "error": "invalid json"
+            }
+
+    except Exception as e:
+
+        print("❌ Submit error:", e)
+
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+# =========================================================
+# ⛏ MINER
+# =========================================================
 
 def mine():
 
@@ -46,9 +131,9 @@ def mine():
 
         try:
 
-            # ==========================================
-            # GET NEW BLOCK TEMPLATE
-            # ==========================================
+            # =================================================
+            # GET TEMPLATE
+            # =================================================
 
             tpl = get_template()
 
@@ -57,36 +142,46 @@ def mine():
             difficulty = tpl["difficulty"]
             txs = tpl["transactions"]
 
-            tx_str = json.dumps(txs, sort_keys=True)
+            tx_str = json.dumps(
+                txs,
+                sort_keys=True
+            )
 
             print(f"\n⛏ Mining Block #{index}")
-            print("🎯 Difficulty:", difficulty)
+            print(f"🎯 Difficulty: {difficulty}")
 
             nonce = 0
             hashes = 0
 
             start = time.time()
 
-            # ==========================================
+            # =================================================
             # MINING LOOP
-            # ==========================================
+            # =================================================
 
             while True:
 
-                # ==========================================
-                # CHECK NEW BLOCK EVERY 2 SEC
-                # ==========================================
+                # =============================================
+                # REFRESH TEMPLATE
+                # =============================================
 
-                if nonce % 500000 == 0:
+                if nonce % TEMPLATE_REFRESH_NONCE == 0:
 
                     try:
 
                         latest = get_template()
 
                         # chain changed
-                        if latest["prev_hash"] != prev_hash:
+                        if (
+                            latest["prev_hash"]
+                            != prev_hash
+                        ):
 
-                            print("🔄 New block detected → restarting mining")
+                            print(
+                                "🔄 New block detected "
+                                "→ restarting mining"
+                            )
+
                             break
 
                     except:
@@ -106,108 +201,122 @@ def mine():
 
                 hashes += 1
 
-                # ==========================================
+                # =============================================
                 # HASHRATE
-                # ==========================================
+                # =============================================
 
-                if hashes % 100000 == 0:
+                if (
+                    hashes
+                    % HASH_UPDATE_INTERVAL
+                    == 0
+                ):
 
-                    elapsed = time.time() - start
+                    elapsed = (
+                        time.time() - start
+                    )
 
                     if elapsed > 0:
 
-                        hr = int(hashes / elapsed)
-
-                        print(
-                            f"⚡ {hr:,} H/s | "
-                            f"Nonce {nonce}"
+                        hr = int(
+                            hashes / elapsed
                         )
 
-                        # ==========================================
-                        # SEND REAL MINER TO DASHBOARD
-                        # ==========================================
+                        print(
+                            f"⚡ {hr:,} H/s "
+                            f"| Nonce {nonce}"
+                        )
 
-                        try:
+                        # dashboard
+                        send_hashrate(
+                            hr,
+                            hashes
+                        )
 
-                            requests.post(
-                                "https://somcoin.online/submit_miner",
-                                json={
-
-                                    "address": ADDRESS,
-
-                                    "hashrate": hr,
-
-                                    "shares": hashes
-
-                                },
-                                timeout=5
-                            )
-
-                        except:
-                            pass
-
-                # ==========================================
+                # =============================================
                 # BLOCK FOUND
-                # ==========================================
+                # =============================================
 
-                if h.startswith("0" * difficulty):
+                if h.startswith(
+                    "0" * difficulty
+                ):
 
-                    elapsed = round(time.time() - start, 2)
+                    elapsed = round(
+                        time.time() - start,
+                        2
+                    )
 
                     print("\n🔥 BLOCK FOUND")
                     print("🧱 Hash:", h)
                     print("🔢 Nonce:", nonce)
-                    print("⏱ Time:", elapsed, "sec")
+                    print("⏱ Time:", elapsed)
 
                     block = {
-                        "index": index,
-                        "previous_hash": prev_hash,
-                        "timestamp": timestamp,
-                        "nonce": nonce,
-                        "transactions": txs,
-                        "difficulty": difficulty,
-                        "hash": h
+
+                        "index":
+                        index,
+
+                        "previous_hash":
+                        prev_hash,
+
+                        "timestamp":
+                        timestamp,
+
+                        "nonce":
+                        nonce,
+
+                        "transactions":
+                        txs,
+
+                        "difficulty":
+                        difficulty,
+
+                        "hash":
+                        h
                     }
 
-                    # ==========================================
-                    # SUBMIT BLOCK
-                    # ==========================================
+                    # =========================================
+                    # SUBMIT
+                    # =========================================
 
-                    try:
+                    result = submit_block(
+                        block
+                    )
 
-                        r = requests.post(
-                            f"{NODE_URL}/submit_block",
-                            json={"block": block},
-                            timeout=600
-                        )
-
-                        result = r.json()
-
-                        print("📨 RESULT:", result)
-
-                    except Exception as e:
-
-                        print("⚠️ Submit error:", e)
+                    print(
+                        "📨 RESULT:",
+                        result
+                    )
 
                     # IMPORTANT
-                    # always restart fresh template
+                    # ALWAYS RESTART TEMPLATE
                     break
 
                 nonce += 1
+
+        # =====================================================
+        # CTRL+C
+        # =====================================================
 
         except KeyboardInterrupt:
 
             print("\n🛑 Miner stopped")
             break
 
+        # =====================================================
+        # ERROR
+        # =====================================================
+
         except Exception as e:
 
             print("❌ Error:", e)
+
             time.sleep(2)
 
-# ==========================================
-# START
-# ==========================================
+
+# =========================================================
+# 🚀 START
+# =========================================================
 
 if __name__ == "__main__":
+
     mine()
