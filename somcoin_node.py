@@ -5540,36 +5540,20 @@ def get_chain():
 
     try:
 
-        # =========================
-        # LIMIT
-        # =========================
         limit = request.args.get(
             "limit",
             type=int
         )
 
-        # =========================
-        # FULL CHAIN
-        # =========================
-        if not limit or limit <= 0:
+        # default = last 500 blocks only
+        if not limit:
+            limit = 500
 
-            return jsonify({
-                "chain": blockchain,
-                "count": len(blockchain),
-                "height": len(blockchain) - 1
-            })
-
-        # =========================
-        # SAFE LIMIT
-        # =========================
-        MAX_LIMIT = 50000
+        MAX_LIMIT = 2000
 
         if limit > MAX_LIMIT:
             limit = MAX_LIMIT
 
-        # =========================
-        # LAST BLOCKS
-        # =========================
         data = blockchain[-limit:]
 
         return jsonify({
