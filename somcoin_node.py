@@ -1316,9 +1316,11 @@ def mine_worker(start, step, index, prev_hash, txs, difficulty):
 # ==================================================
 # MULTI CPU MINER
 # ==================================================
+
 def mine_block(index, prev_hash, block_txs, difficulty):
 
-    cpu = multiprocessing.cpu_count()
+    # leave 1 cpu for node/system
+    cpu = max(1, multiprocessing.cpu_count() - 1)
 
     with multiprocessing.Pool(cpu) as pool:
 
@@ -1328,7 +1330,14 @@ def mine_block(index, prev_hash, block_txs, difficulty):
 
             job = pool.apply_async(
                 mine_worker,
-                (i, cpu, index, prev_hash, block_txs, difficulty)
+                (
+                    i,
+                    cpu,
+                    index,
+                    prev_hash,
+                    block_txs,
+                    difficulty
+                )
             )
 
             jobs.append(job)
@@ -1341,12 +1350,13 @@ def mine_block(index, prev_hash, block_txs, difficulty):
 
                     nonce, ts, h = job.get()
 
+                    # stop all workers
                     pool.terminate()
                     pool.join()
 
                     return nonce, ts, h
 
-            time.sleep(0.01)
+            time.sleep(0.05)
 
 # ==================================================
 # GENESIS BLOCK (LOCKED + BITCOIN STYLE 🚀)
