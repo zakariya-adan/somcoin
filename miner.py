@@ -7,6 +7,9 @@ import hashlib
 import time
 import json
 import gc
+import os
+import signal
+import threading
 
 # =========================================================
 # 🚀 PERFORMANCE
@@ -24,11 +27,25 @@ NODE_URL = "http://127.0.0.1:9443"
 
 ADDRESS = "SOMGjFnfFWcFTTc7HsftBXdQP4wSDgYyE"
 
-HASH_UPDATE_INTERVAL = 1_000_000
+REQUEST_TIMEOUT = 120
 
-TEMPLATE_REFRESH_NONCE = 500_000
+HASH_UPDATE_INTERVAL = 5_000_000
 
-REQUEST_TIMEOUT = 30
+TEMPLATE_REFRESH_NONCE = 5_000_000
+
+AUTO_RECONNECT_DELAY = 3
+
+MAX_NONCE = 2**64
+
+# =========================================================
+# 🚀 GLOBALS
+# =========================================================
+
+running = True
+
+current_hashrate = 0
+
+shares = 0
 
 # =========================================================
 # 🔥 DOUBLE SHA256
@@ -44,7 +61,7 @@ def double_sha256(data):
 
 
 # =========================================================
-# 📦 GET BLOCK TEMPLATE
+# 📦 GET TEMPLATE
 # =========================================================
 
 def get_template():
@@ -61,17 +78,19 @@ def get_template():
 # 🚀 SEND HASHRATE
 # =========================================================
 
-def send_hashrate(hr, shares):
+def send_hashrate(hr, shares_count):
 
     try:
 
         session.post(
             "https://somcoin.online/submit_miner",
+
             json={
                 "address": ADDRESS,
                 "hashrate": hr,
-                "shares": shares
+                "shares": shares_count
             },
+
             timeout=5
         )
 
@@ -88,28 +107,26 @@ def submit_block(block):
     try:
 
         r = session.post(
+
             f"{NODE_URL}/submit_block",
 
-            # IMPORTANT FIX
             json=block,
 
             timeout=REQUEST_TIMEOUT
         )
 
-        print("STATUS:", r.status_code)
-        print("TEXT:", r.text)
-
         try:
+
             return r.json()
+
         except:
+
             return {
                 "success": False,
-                "error": "invalid json"
+                "error": r.text
             }
 
     except Exception as e:
-
-        print("❌ Submit error:", e)
 
         return {
             "success": False,
@@ -118,28 +135,112 @@ def submit_block(block):
 
 
 # =========================================================
+# ❤️ HEALTH CHECK
+# =========================================================
+
+def health_check():
+
+    while running:
+
+        try:
+
+            r = session.get(
+                f"{NODE_URL}/health",
+                timeout=10
+            )
+
+            if r.status_code == 200:
+
+                data = r.json()
+
+                print(
+                    f"\n💚 NODE OK "
+                    f"| height={data.get('height')} "
+                    f"| peers={data.get('peers')}"
+                )
+
+        except Exception as e:
+
+            print(
+                "\n⚠️ Health check failed:",
+                e
+            )
+
+        time.sleep(60)
+
+
+# =========================================================
+# 🚀 SIGNAL HANDLER
+# =========================================================
+
+def signal_handler(sig, frame):
+
+    global running
+
+    running = False
+
+    print("\n🛑 Miner shutting down...")
+
+    os._exit(0)
+
+
+signal.signal(
+    signal.SIGINT,
+    signal_handler
+)
+
+signal.signal(
+    signal.SIGTERM,
+    signal_handler
+)
+
+# =========================================================
 # ⛏ MINER
 # =========================================================
 
 def mine():
 
+    global current_hashrate
+    global shares
+
     print("🚀 SomCoin Decentralized Miner")
     print("🌐 Node:", NODE_URL)
     print("💰 Address:", ADDRESS)
 
-    while True:
+    # =====================================================
+    # START HEALTH THREAD
+    # =====================================================
+
+    threading.Thread(
+        target=health_check,
+        daemon=True
+    ).start()
+
+    while running:
 
         try:
 
             # =================================================
-            # GET TEMPLATE
+            # GET BLOCK TEMPLATE
             # =================================================
 
             tpl = get_template()
 
+            if not tpl:
+
+                print("❌ Empty template")
+
+                time.sleep(2)
+                continue
+
             index = tpl["index"]
+
             prev_hash = tpl["prev_hash"]
-            difficulty = tpl["difficulty"]
+
+            difficulty = int(
+                tpl["difficulty"]
+            )
+
             txs = tpl["transactions"]
 
             tx_str = json.dumps(
@@ -147,10 +248,16 @@ def mine():
                 sort_keys=True
             )
 
-            print(f"\n⛏ Mining Block #{index}")
-            print(f"🎯 Difficulty: {difficulty}")
+            print(
+                f"\n⛏ Mining Block #{index}"
+            )
+
+            print(
+                f"🎯 Difficulty: {difficulty}"
+            )
 
             nonce = 0
+
             hashes = 0
 
             start = time.time()
@@ -159,47 +266,64 @@ def mine():
             # MINING LOOP
             # =================================================
 
-            while True:
+            while running:
 
                 # =============================================
                 # REFRESH TEMPLATE
                 # =============================================
 
-                if nonce % TEMPLATE_REFRESH_NONCE == 0:
+                if (
+                    nonce
+                    %
+                    TEMPLATE_REFRESH_NONCE
+                    ==
+                    0
+                ):
 
                     try:
 
                         latest = get_template()
 
-                        # chain changed
                         if (
                             latest["prev_hash"]
                             != prev_hash
                         ):
 
                             print(
-                                "🔄 New block detected "
-                                "→ restarting mining"
+                                "\n🔄 New block detected "
+                                "→ restarting miner"
                             )
 
                             break
 
-                    except:
-                        pass
+                    except Exception as e:
 
-                timestamp = int(time.time())
+                        print(
+                            "⚠️ Template refresh error:",
+                            e
+                        )
+
+                timestamp = int(
+                    time.time()
+                )
 
                 block_data = (
+
                     f"{index}"
                     f"{prev_hash}"
                     f"{timestamp}"
                     f"{nonce}"
                     f"{tx_str}"
+
                 )
 
-                h = double_sha256(block_data)
+                h = double_sha256(
+                    block_data
+                )
 
                 hashes += 1
+
+                shares += 1
 
                 # =============================================
                 # HASHRATE
@@ -207,8 +331,10 @@ def mine():
 
                 if (
                     hashes
-                    % HASH_UPDATE_INTERVAL
-                    == 0
+                    %
+                    HASH_UPDATE_INTERVAL
+                    ==
+                    0
                 ):
 
                     elapsed = (
@@ -221,15 +347,16 @@ def mine():
                             hashes / elapsed
                         )
 
+                        current_hashrate = hr
+
                         print(
                             f"⚡ {hr:,} H/s "
                             f"| Nonce {nonce}"
                         )
 
-                        # dashboard
                         send_hashrate(
                             hr,
-                            hashes
+                            shares
                         )
 
                 # =============================================
@@ -245,10 +372,25 @@ def mine():
                         2
                     )
 
-                    print("\n🔥 BLOCK FOUND")
-                    print("🧱 Hash:", h)
-                    print("🔢 Nonce:", nonce)
-                    print("⏱ Time:", elapsed)
+                    print(
+                        "\n🔥 BLOCK FOUND"
+                    )
+
+                    print(
+                        "🧱 Hash:",
+                        h
+                    )
+
+                    print(
+                        "🔢 Nonce:",
+                        nonce
+                    )
+
+                    print(
+                        "⏱ Time:",
+                        elapsed,
+                        "sec"
+                    )
 
                     block = {
 
@@ -275,7 +417,7 @@ def mine():
                     }
 
                     # =========================================
-                    # SUBMIT
+                    # SUBMIT BLOCK
                     # =========================================
 
                     result = submit_block(
@@ -293,13 +435,21 @@ def mine():
 
                 nonce += 1
 
+                # overflow protection
+                if nonce >= MAX_NONCE:
+
+                    nonce = 0
+
         # =====================================================
         # CTRL+C
         # =====================================================
 
         except KeyboardInterrupt:
 
-            print("\n🛑 Miner stopped")
+            print(
+                "\n🛑 Miner stopped"
+            )
+
             break
 
         # =====================================================
@@ -308,9 +458,14 @@ def mine():
 
         except Exception as e:
 
-            print("❌ Error:", e)
+            print(
+                "❌ Error:",
+                e
+            )
 
-            time.sleep(2)
+            time.sleep(
+                AUTO_RECONNECT_DELAY
+            )
 
 
 # =========================================================
