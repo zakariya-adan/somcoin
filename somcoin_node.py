@@ -6365,9 +6365,9 @@ if __name__ == "__main__":
         "Auto Seed Control"
     )
 
-    start_thread(
-        auto_sync,
-        "Auto Sync"
+   # start_thread(
+       # auto_sync,
+      # "Auto Sync"
     )
 
     start_thread(
