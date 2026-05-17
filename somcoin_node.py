@@ -768,38 +768,6 @@ def auto_seed_expand():
 
         time.sleep(30)
 
-# ==================================================
-# 🌐 AUTO SEED CONTROL (SMART DECENTRALIZATION)
-# ==================================================
-def auto_seed_control():
-
-    global SEED_NODES
-
-    ORIGINAL_SEEDS = [
-        "167.86.117.249:9334",
-        "23.94.66.117:9334",
-    ]
-
-    SEED_ACTIVE = True
-
-    while True:
-        try:
-            peer_count = len(p2p_peers)
-
-            if peer_count >= 50 and SEED_ACTIVE:
-                print(f"🔥 Strong network ({peer_count} peers) → DISABLING seeds")
-                SEED_NODES = []
-                SEED_ACTIVE = False
-
-            elif peer_count < 20 and not SEED_ACTIVE:
-                print(f"⚠️ Weak network ({peer_count} peers) → ENABLING seeds")
-                SEED_NODES = ORIGINAL_SEEDS.copy()
-                SEED_ACTIVE = True
-
-        except Exception as e:
-            print("Seed control error:", e)
-
-        time.sleep(15)
 
 # ==================================================
 # API: GET PEERS
@@ -1226,65 +1194,6 @@ def build_block_transactions(miner_address):
 
     return [coinbase] + txs
 
-# ==================================================
-# DIFFICULTY ADJUSTMENT
-# ==================================================
-
-DIFFICULTY_ADJUSTMENT_INTERVAL = 10
-
-def adjust_difficulty():
-
-    global difficulty
-
-    # haddii blocks yar yihiin ha bedelin difficulty
-    if len(blockchain) < DIFFICULTY_ADJUSTMENT_INTERVAL:
-        return
-
-    last_block = blockchain[-1]
-    prev_block = blockchain[-DIFFICULTY_ADJUSTMENT_INTERVAL]
-
-    actual_time = last_block["timestamp"] - prev_block["timestamp"]
-    expected_time = TARGET_BLOCK_TIME * DIFFICULTY_ADJUSTMENT_INTERVAL
-
-    # haddii blocks degdeg ku yimaadaan → difficulty kordhi
-    if actual_time < expected_time / 2:
-
-        difficulty += 1
-
-        if difficulty > MAX_DIFFICULTY:
-            difficulty = MAX_DIFFICULTY
-
-        print("Difficulty increased:", difficulty)
-
-    # haddii blocks gaabis noqdaan → difficulty dhimi
-    elif actual_time > expected_time * 2:
-
-        if difficulty > 1:
-            difficulty -= 1
-
-        print("Difficulty decreased:", difficulty)
-
-def sha(data):
-    return hashlib.sha256(
-        hashlib.sha256(data.encode()).digest()
-    ).hexdigest()
-
-# =========================
-# 🔥 POW HASH (SCRYPT)
-# =========================
-def pow_hash(data):
-    import hashlib
-    return hashlib.sha256(
-        hashlib.sha256(data.encode()).digest()
-    ).hexdigest()
-
-# ==================================================
-# BUILD BLOCK HEADER
-# ==================================================
-def build_header(index, prev_hash, timestamp, tx_str):
-    header = f"{index}{prev_hash}{timestamp}{tx_str}"
-    return header.encode()
-
 
 # ==================================================
 # GENESIS BLOCK (LOCKED + BITCOIN STYLE 🚀)
@@ -1470,48 +1379,6 @@ def rebuild_utxo():
         f"wallets={len(address_balances)}"
     )
 
-
-# ==================================================
-# 🔥 ADD BLOCK (SINGLE SOURCE OF TRUTH)
-# ==================================================
-def add_block_to_chain(block):
-
-    global blockchain
-
-    try:
-
-        with blockchain_lock:
-
-            # =========================
-            # ADD BLOCK
-            # =========================
-            blockchain.append(block)
-
-            # =========================
-            # UPDATE UTXO
-            # =========================
-            update_utxo(block)
-
-            # =========================
-            # SAVE
-            # =========================
-            save_data()
-
-            print(
-                f"✅ Block added: "
-                f"{block['index']}"
-            )
-
-            return True
-
-    except Exception as e:
-
-        print(
-            "❌ Add block error:",
-            e
-        )
-
-        return False
 
 # ==================================================
 # SIGN TRANSACTION
@@ -2837,348 +2704,6 @@ def better_chain(new_chain):
 
         return False
 
-# =========================
-# 🚀 REPLACE CHAIN
-# BITCOIN STYLE (ULTRA PRO MAX)
-# =========================
-def replace_chain(new_chain):
-
-    global blockchain
-    global pending_transactions
-
-    with blockchain_lock:
-
-       old_chain = blockchain.copy()
-
-    try:
-
-        # =========================
-        # BASIC VALIDATION
-        # =========================
-        if not isinstance(new_chain, list):
-
-            print("❌ Reject: chain not list")
-
-            return False
-
-        if len(new_chain) == 0:
-
-            print("❌ Reject: empty chain")
-
-            return False
-
-        # =========================
-        # VALIDATE FULL CHAIN
-        # =========================
-        print(
-            f"🔍 Validating chain "
-            f"| blocks={len(new_chain)}"
-        )
-
-        if not is_valid_full_chain(new_chain):
-
-            print("❌ Invalid chain rejected")
-
-            return False
-
-        # =========================
-        # ⚖️ BITCOIN-STYLE WORK CHECK
-        # =========================
-        local_work = chain_work(blockchain)
-        new_work = chain_work(new_chain)
-
-        print(
-            f"⚖️ Work compare "
-            f"| local={local_work} "
-            f"| new={new_work}"
-        )
-
-        # =========================
-        # ONLY ACCEPT STRONGER CHAIN
-        # =========================
-        if new_work <= local_work:
-
-            print("ℹ️ Weaker chain ignored")
-
-            return False
-
-        # =========================
-        # EXTRA SAFETY
-        # =========================
-        if len(new_chain) < len(blockchain) * 0.5:
-
-            print("❌ Suspicious chain rejected")
-
-            return False
-
-        print(
-            f"🌐 Replacing blockchain "
-            f"{len(blockchain)} -> {len(new_chain)}"
-        )
-
-        # =========================
-        # REPLACE CHAIN
-        # =========================
-        blockchain.clear()
-
-        blockchain.extend(new_chain)
-
-        # =========================
-        # REBUILD STATE
-        # =========================
-        rebuild_utxo()
-
-        # =========================
-        # CLEAN MEMPOOL
-        # remove confirmed txs
-        # =========================
-        confirmed = set()
-
-        for block in blockchain:
-
-            for tx in block.get("transactions", []):
-
-                try:
-
-                    confirmed.add(
-                        tx_hash(tx)
-                    )
-
-                except:
-                    pass
-
-        pending_transactions = [
-
-            tx for tx in pending_transactions
-
-            if tx_hash(tx) not in confirmed
-        ]
-
-        # =========================
-        # FAILSAFE UTXO FIX
-        # =========================
-        if (
-            len(utxo_set) == 0
-            and len(blockchain) > 1
-        ):
-
-            print(
-                "⚠️ Empty UTXO detected "
-                "→ rebuilding..."
-            )
-
-            rebuild_utxo()
-
-        # =========================
-        # SAVE
-        # =========================
-        save_data()
-
-        print(
-            f"✅ Chain synced successfully "
-            f"| height={len(blockchain)-1} "
-            f"| utxos={len(utxo_set)}"
-        )
-
-        return True
-
-    except Exception as e:
-
-        print(
-            "❌ Replace chain fatal error:",
-            e
-        )
-
-        # =========================
-        # RECOVERY
-        # =========================
-        try:
-
-            blockchain.clear()
-
-            blockchain.extend(old_chain)
-
-            rebuild_utxo()
-
-            save_data()
-
-            print(
-                "🛠 Chain recovery completed"
-            )
-
-        except Exception as recovery_error:
-
-            print(
-                "💥 Recovery failed:",
-                recovery_error
-            )
-
-        return False
-
-# ==================================================
-# REQUEST PEERS (FINAL SECURE)
-# ==================================================
-def request_peers():
-    global p2p_peers
-
-    for peer in list(p2p_peers):
-        try:
-            host, port = peer.split(":")
-            port = int(port)
-
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(3)
-
-            s.connect((host, port))
-
-            s.sendall((json.dumps({
-                "type": "get_peers"
-            }) + "\n").encode())
-
-            data = s.recv(8192)
-
-            if not data:
-                continue
-
-            try:
-                resp = json.loads(data.decode())
-
-                if resp.get("type") == "peers":
-
-                    new_peers = resp.get("data", [])
-                    seen_ips = set()
-
-                    for p in new_peers:
-                        try:
-                            ip, prt = p.split(":")
-                            prt = int(prt)
-
-                            # ✅ only allowed port
-                            if prt not in ALLOWED_PORTS:
-                                continue
-
-                            # 🚫 skip duplicates
-                            if ip in seen_ips or ip in peer_ips:
-                                continue
-
-                            seen_ips.add(ip)
-
-                            peer_addr = f"{ip}:{prt}"
-
-                            if len(p2p_peers) < MAX_PEERS:
-                                p2p_peers.add(peer_addr)
-                                peer_ips.add(ip)
-                                save_peers_safe()
-
-                                print("🌐 Peer discovered:", peer_addr)
-
-                        except:
-                            continue
-
-            except:
-                pass
-
-            s.close()
-
-        except:
-            continue
-
-# ==================================================
-# 🌍 BOOTSTRAP PEERS
-# ==================================================
-def bootstrap_peers():
-
-    global p2p_peers
-
-    try:
-
-        for peer in list(SEED_NODES):
-
-            try:
-
-                if peer in p2p_peers:
-                    continue
-
-                ip, port = peer.split(":")
-                port = int(port)
-
-                s = socket.socket(
-                    socket.AF_INET,
-                    socket.SOCK_STREAM
-                )
-
-                s.settimeout(3)
-
-                result = s.connect_ex((ip, port))
-
-                s.close()
-
-                if result == 0:
-
-                    p2p_peers.add(
-                        f"{ip}:{port}"
-                    )
-
-                    print(
-                        f"🌐 Peer added: "
-                        f"{ip}:{port}"
-                    )
-
-            except Exception as e:
-
-                print(
-                    "❌ Peer connect error:",
-                    e
-                )
-
-    except Exception as e:
-
-        print(
-            "❌ Bootstrap error:",
-            e
-        )
-
-# ==================================================
-# 🌍 SMART DISCOVERY
-# ==================================================
-
-def smart_discovery():
-
-    while True:
-
-        try:
-
-            bootstrap_peers()
-
-            request_peers()
-
-        except Exception as e:
-
-            print(
-                "Discovery error:",
-                e
-            )
-
-        time.sleep(30)
-
-# ==================================================
-# SAFE MULTI MESSAGE HANDLER
-# ==================================================
-def safe_handle(data, conn):
-    messages = data.split("\n")
-
-    for msg in messages:
-        if msg.strip():
-            handle_msg(msg, conn)
-
-def send_msg(conn, data):
-    try:
-        if not isinstance(data, dict):
-            return
-        msg = json.dumps(data) + "\n"
-        conn.sendall(msg.encode())
-    except Exception as e:
-        pass
 
 # ==================================================
 # 📥 RECEIVE MESSAGE
@@ -3295,45 +2820,6 @@ def calculate_chainwork(chain):
 
     return total
 
-# =========================================================
-# 🔥 VERIFY DIFFICULTY
-# =========================================================
-def verify_difficulty(block):
-
-    try:
-
-        difficulty = int(
-            block["difficulty"]
-        )
-
-        # =========================
-        # LIMITS
-        # =========================
-        if difficulty < MIN_DIFFICULTY:
-            return False
-
-        if difficulty > MAX_DIFFICULTY:
-            return False
-
-        # =========================
-        # REAL EXPECTED DIFFICULTY
-        # =========================
-        expected = dynamic_difficulty()
-
-        # allow ±1 flexibility
-        if abs(difficulty - expected) > 1:
-            return False
-
-        return True
-
-    except Exception as e:
-
-        print(
-            "Difficulty verify error:",
-            e
-        )
-
-        return False
 
 # =========================================================
 # 🔥 VALIDATE BLOCK
@@ -3438,63 +2924,6 @@ def safe_validate_block(block):
 
         return False
 
-# ==================================================
-# 🔥 REPLACE CHAIN (BITCOIN STYLE)
-# ==================================================
-def maybe_replace_chain(new_chain):
-
-    global blockchain
-
-    try:
-
-        if not isinstance(new_chain, list):
-            return False
-
-        if len(new_chain) == 0:
-            return False
-
-        # validate chain
-        if not is_valid_full_chain(new_chain):
-            return False
-
-        local_work = calculate_chainwork(blockchain)
-        new_work = calculate_chainwork(new_chain)
-
-        print(
-            "⚖️ Chain compare:",
-            local_work,
-            new_work
-        )
-
-        # strongest chain wins
-        if new_work <= local_work:
-            return False
-
-        print("🔥 Stronger chain found")
-
-        with blockchain_lock:
-
-            blockchain.clear()
-            blockchain.extend(new_chain)
-
-            pending_transactions.clear()
-
-            rebuild_utxo()
-
-            save_data()
-
-        print("✅ Chain replaced")
-
-        return True
-
-    except Exception as e:
-
-        print(
-            "Replace chain error:",
-            e
-        )
-
-        return False
 
 
 # =========================
@@ -3823,9 +3252,6 @@ def handle_msg(msg, conn=None):
             peer_ip = msg.get("public_ip")
             peer_port = msg.get("port", P2P_PORT)
 
-            # =====================================
-            # 🔒 NODE VERIFICATION
-            # =====================================
             node_id = msg.get("node_id")
             public_key = msg.get("public_key")
             signature = msg.get("signature")
@@ -3844,9 +3270,6 @@ def handle_msg(msg, conn=None):
 
                 return
 
-            # =====================================
-            # VALIDATE PEER
-            # =====================================
             if peer_ip:
 
                 try:
@@ -3855,14 +3278,14 @@ def handle_msg(msg, conn=None):
                 except:
                     return
 
-                # 🚫 ignore self
+                # 🚫 self ignore
                 if (
                     peer_ip == NODE_IP
                     and peer_port == P2P_PORT
                 ):
                     return
 
-                # 🚫 banned peer
+                # 🚫 banned
                 if is_banned(peer_ip):
                     return
 
@@ -3878,13 +3301,9 @@ def handle_msg(msg, conn=None):
                         f"{peer_ip}:{peer_port}"
                     )
 
-                    mark_peer_alive(
-                        peer_name
-                    )
+                    mark_peer_alive(peer_name)
 
-                    reward_peer(
-                        peer_name
-                    )
+                    reward_peer(peer_name)
 
                     print(
                         "✅ Verified peer:",
@@ -3907,9 +3326,7 @@ def handle_msg(msg, conn=None):
 
                             conn.sendall(
                                 (
-                                    json.dumps(
-                                        response
-                                    )
+                                    json.dumps(response)
                                     + "\n"
                                 ).encode()
                             )
@@ -3943,17 +3360,13 @@ def handle_msg(msg, conn=None):
 
             txid = tx_hash(tx)
 
-            # 🚫 duplicate mempool tx
+            # 🚫 duplicate tx
             existing = set()
 
             for t in pending_transactions:
 
                 try:
-
-                    existing.add(
-                        tx_hash(t)
-                    )
-
+                    existing.add(tx_hash(t))
                 except:
                     pass
 
@@ -4011,29 +3424,10 @@ def handle_msg(msg, conn=None):
                 return
 
             # =====================================
-            # VALIDATE BLOCK
+            # PROCESS BLOCK
+            # SINGLE SOURCE OF TRUTH
             # =====================================
-            if not safe_validate_block(block):
-
-                print(
-                    "❌ Invalid block rejected"
-                )
-
-                return
-
-            # =====================================
-            # DUPLICATE BLOCK
-            # =====================================
-            if any(
-                b.get("hash") == block.get("hash")
-                for b in blockchain
-            ):
-                return
-
-            # =====================================
-            # ADD BLOCK
-            # =====================================
-            if add_block_to_chain(block):
+            if process_new_block(block):
 
                 print(
                     "✅ Block accepted:",
@@ -4051,48 +3445,11 @@ def handle_msg(msg, conn=None):
                         block_hash
                     )
 
-                    add_block_to_chain(
-                        orphan
-                    )
+                    process_new_block(orphan)
 
                     print(
                         "✅ Orphan connected"
                     )
-
-                # =====================================
-                # CLEAN MEMPOOL
-                # =====================================
-                confirmed = set()
-
-                for tx in block.get(
-                    "transactions",
-                    []
-                ):
-
-                    try:
-
-                        confirmed.add(
-                            tx_hash(tx)
-                        )
-
-                    except:
-                        pass
-
-                pending_transactions = [
-
-                    tx for tx in pending_transactions
-
-                    if tx_hash(tx)
-                    not in confirmed
-                ]
-
-                # =====================================
-                # REBROADCAST BLOCK
-                # =====================================
-                p2p_broadcast({
-                    "type": "compact_block",
-                    "data": block
-                })
 
             else:
 
@@ -4521,255 +3878,110 @@ mempool_lock = threading.Lock()
 last_mine_time = 0
 MINE_COOLDOWN = 1.5   # anti spam
 
-
 # ==================================================
-# MINE (ULTRA SECURE FINAL PRO MAX 🚀)
+# 🚀 PROCESS NEW BLOCK
+# SINGLE SOURCE OF TRUTH
 # ==================================================
-
-# IMPORTANT:
-# NODE SHOULD NOT DO HEAVY CPU MINING.
-# miner.py DOES THE REAL MINING.
-# THIS API ONLY PREPARES BLOCK TEMPLATE.
-
-@app.route("/mine/<addr>")
-def mine(addr):
+def process_new_block(block):
 
     global blockchain
     global pending_transactions
 
     try:
 
-        # =====================================================
-        # ADDRESS VALIDATION
-        # =====================================================
+        # =========================
+        # VALIDATE
+        # =========================
+        if not safe_validate_block(block):
 
-        if not isinstance(addr, str):
-
-            return jsonify({
-                "error": "invalid address"
-            })
-
-        if not addr.startswith("SOM"):
-
-            return jsonify({
-                "error": "invalid address"
-            })
-
-        if len(addr) < 10:
-
-            return jsonify({
-                "error": "invalid address"
-            })
-
-        # =====================================================
-        # GENESIS CHECK
-        # =====================================================
+            print("❌ Invalid block")
+            return False
 
         with blockchain_lock:
 
-            if len(blockchain) == 0:
-                create_genesis()
+            # =========================
+            # DUPLICATE CHECK
+            # =========================
+            for b in blockchain:
 
-        # =====================================================
-        # BLOCK REWARD
-        # =====================================================
-
-        reward = block_reward()
-
-        if reward <= 0:
-
-            return jsonify({
-                "error": "max supply reached"
-            })
-
-        # =====================================================
-        # MEMPOOL SNAPSHOT
-        # =====================================================
-
-        with mempool_lock:
-
-            mempool_snapshot = list(
-                pending_transactions
-            )
-
-        # =====================================================
-        # CLEAN TXS
-        # =====================================================
-
-        clean_txs = []
-        seen_txids = set()
-        used_inputs = set()
-
-        total_block_size = 0
-
-        for tx in mempool_snapshot:
-
-            try:
-
-                if not isinstance(tx, dict):
-                    continue
-
-                txid = tx_hash(tx)
-
-                # duplicate tx
-                if txid in seen_txids:
-                    continue
-
-                seen_txids.add(txid)
-
-                # skip fake coinbase
-                if tx.get("sender") == "NETWORK":
-                    continue
-
-                tx_size = len(
-                    json.dumps(tx).encode()
-                )
-
-                # max tx size
-                if tx_size > MAX_TX_SIZE:
-                    continue
-
-                # max block size
-                if (
-                    total_block_size + tx_size
-                    > MAX_BLOCK_SIZE
-                ):
-                    continue
-
-                # verify tx
-                if not verify_tx(
-                    tx,
-                    used_inputs
-                ):
-                    continue
-
-                clean_txs.append(tx)
-
-                total_block_size += tx_size
-
-                # tx limit
-                if (
-                    len(clean_txs)
-                    >= MAX_TX_PER_BLOCK
-                ):
-                    break
-
-            except:
-                continue
-
-        # =====================================================
-        # TOTAL FEES
-        # =====================================================
-
-        total_fees = round(
-
-            sum(
-                float(tx.get("fee", 0))
-                for tx in clean_txs
-            ),
-
-            8
-        )
-
-        # =====================================================
-        # FINAL REWARD
-        # =====================================================
-
-        final_reward = round(
-            reward + total_fees,
-            8
-        )
-
-        # =====================================================
-        # COINBASE TX
-        # =====================================================
-
-        coinbase_tx = {
-
-            "sender": "NETWORK",
-
-            "inputs": [],
-
-            "outputs": [{
-
-                "address": addr,
-                "amount": final_reward
-
-            }],
-
-            "timestamp": time.time(),
-
-            "txid": hashlib.sha256(
-
-                f"{addr}{time.time()}".encode()
-
-            ).hexdigest()
-        }
-
-        # =====================================================
-        # BUILD TXS
-        # =====================================================
-
-        block_txs = (
-            [coinbase_tx] +
-            clean_txs
-        )
-
-        # =====================================================
-        # CHAIN STATE
-        # =====================================================
-
-        with blockchain_lock:
+                if b["hash"] == block["hash"]:
+                    return False
 
             last_block = blockchain[-1]
 
-            next_index = (
-                last_block["index"] + 1
-            )
+            # =========================
+            # PREVIOUS HASH
+            # =========================
+            if block["previous_hash"] != last_block["hash"]:
+                return False
 
-            previous_hash = (
-                last_block["hash"]
-            )
+            # =========================
+            # HEIGHT CHECK
+            # =========================
+            if block["index"] != last_block["index"] + 1:
+                return False
 
-            difficulty = (
-                dynamic_difficulty()
-            )
+            # =========================
+            # ADD BLOCK
+            # =========================
+            blockchain.append(block)
 
-        # =====================================================
-        # RESPONSE
-        # =====================================================
+        # =========================
+        # UPDATE UTXO
+        # =========================
+        try:
+            update_utxo(block)
 
-        return jsonify({
+        except:
+            rebuild_utxo()
 
-            "status": "ok",
+        # =========================
+        # CLEAN MEMPOOL
+        # =========================
+        confirmed = set()
 
-            "index": next_index,
+        for tx in block["transactions"]:
 
-            "previous_hash": previous_hash,
+            try:
+                confirmed.add(tx_hash(tx))
+            except:
+                pass
 
-            "difficulty": difficulty,
+        pending_transactions = [
 
-            "reward": final_reward,
+            tx for tx in pending_transactions
 
-            "fees": total_fees,
+            if tx_hash(tx) not in confirmed
+        ]
 
-            "transactions": block_txs,
+        # =========================
+        # SAVE
+        # =========================
+        save_data()
 
-            "tx_count": len(block_txs),
-
-            "block_size": total_block_size,
-
-            "network_time": time.time()
+        # =========================
+        # BROADCAST
+        # =========================
+        p2p_broadcast({
+            "type": "block",
+            "data": block
         })
+
+        print(
+            f"✅ Block accepted: "
+            f"{block['index']}"
+        )
+
+        return True
 
     except Exception as e:
 
-        print("❌ Mine API error:", e)
+        print(
+            "❌ Process block error:",
+            e
+        )
 
-        return jsonify({
-            "error": str(e)
-        })
-
+        return False
 
 # =========================================================
 # 🚀 SUBMIT BLOCK
@@ -4778,201 +3990,52 @@ def mine(addr):
 @app.route("/submit_block", methods=["POST"])
 def submit_block():
 
-    global blockchain
-    global pending_transactions
-
     try:
 
-        data = request.get_json()
+        block = request.get_json()
 
-        if not isinstance(data, dict):
-
-            return jsonify({
-                "error": "invalid block"
-            })
-
-        block = data
-
-        # =====================================================
-        # VALIDATE BLOCK
-        # =====================================================
-
-        if not safe_validate_block(block):
+        # =========================
+        # VALIDATE INPUT
+        # =========================
+        if not isinstance(block, dict):
 
             return jsonify({
                 "error": "invalid block"
             })
 
-        block_hash = block.get("hash")
+        # =========================
+        # SINGLE SOURCE OF TRUTH
+        # =========================
+        success = process_new_block(block)
 
-        if not block_hash:
+        if not success:
 
             return jsonify({
-                "error": "missing hash"
+                "error": "block rejected"
             })
 
-        # =====================================================
-        # SAFE ADD
-        # =====================================================
-
-        with blockchain_lock:
-
-            # duplicate
-            for b in blockchain:
-
-                try:
-
-                    if b["hash"] == block_hash:
-
-                        return jsonify({
-                            "error": "duplicate block"
-                        })
-
-                except:
-                    continue
-
-            last_block = blockchain[-1]
-
-            # previous hash
-            if (
-                block["previous_hash"]
-                != last_block["hash"]
-            ):
-
-                return jsonify({
-                    "error": "stale block"
-                })
-
-            # height
-            if (
-                block["index"]
-                != last_block["index"] + 1
-            ):
-
-                return jsonify({
-                    "error": "bad height"
-                })
-
-            # add block
-            blockchain.append(block)
-
-        # =====================================================
-        # UPDATE UTXO
-        # =====================================================
-
-        try:
-
-            update_utxo(block)
-
-        except Exception as e:
-
-            print("⚠️ update_utxo failed:", e)
-
-            rebuild_utxo()
-
-        # =====================================================
-        # CLEAN MEMPOOL
-        # =====================================================
-
-        confirmed_txids = set()
-
-        for tx in block["transactions"]:
-
-            try:
-
-                confirmed_txids.add(
-                    tx_hash(tx)
-                )
-
-            except:
-                continue
-
-        with mempool_lock:
-
-            cleaned = []
-
-            for tx in pending_transactions:
-
-                try:
-
-                    if (
-                        tx_hash(tx)
-                        not in confirmed_txids
-                    ):
-                        cleaned.append(tx)
-
-                except:
-                    continue
-
-            pending_transactions[:] = cleaned
-
-        # =====================================================
-        # SAVE
-        # =====================================================
-
-        try:
-
-            save_data()
-
-        except Exception as e:
-
-            print("❌ save error:", e)
-
-        # =====================================================
-        # CACHE
-        # =====================================================
-
-        try:
-
-            add_recent_block(block_hash)
-
-        except:
-            pass
-
-        # =====================================================
-        # BROADCAST
-        # =====================================================
-
-        try:
-
-            p2p_broadcast({
-
-                "type": "compact_block",
-
-                "data": block
-            })
-
-        except Exception as e:
-
-            print("⚠️ broadcast error:", e)
-
-        print(
-            f"🔥 BLOCK ACCEPTED "
-            f"| height={block['index']} "
-            f"| hash={block_hash[:20]}"
-        )
-
-        # =====================================================
+        # =========================
         # SUCCESS
-        # =====================================================
-
+        # =========================
         return jsonify({
 
             "status": "accepted",
 
             "height": block["index"],
 
-            "hash": block_hash
+            "hash": block["hash"]
         })
 
     except Exception as e:
 
-        print("❌ submit block error:", e)
+        print(
+            "❌ submit block error:",
+            e
+        )
 
         return jsonify({
             "error": str(e)
         })
-
 
 # =========================================================
 # 🚀 HEALTH
@@ -5004,22 +4067,80 @@ def health():
             "error": str(e)
         })
 
-# ==================================================
-# GLOBAL STATE
-# ==================================================
-auto_mining = False
-auto_miner_thread = None
+
+@app.route("/headers")
+def headers():
+
+    try:
+
+        limit = request.args.get(
+            "limit",
+            default=2000,
+            type=int
+        )
+
+        start = request.args.get(
+            "start",
+            default=0,
+            type=int
+        )
+
+        result = []
+
+        end = min(
+            start + limit,
+            len(blockchain)
+        )
+
+        for b in blockchain[start:end]:
+
+            result.append({
+
+                "index": b["index"],
+
+                "hash": b["hash"],
+
+                "previous_hash":
+                b["previous_hash"],
+
+                "timestamp":
+                b["timestamp"],
+
+                "difficulty":
+                b.get("difficulty", 1)
+
+            })
+
+        return jsonify({
+
+            "headers": result,
+
+            "height": len(blockchain)-1
+
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 
-def compact_block(block):
-    return {
-        "index": block["index"],
-        "hash": block["hash"],
-        "previous_hash": block["previous_hash"],
-        "tx_ids": [tx_hash(tx) for tx in block["transactions"]],
-        "timestamp": block["timestamp"],
-        "difficulty": block["difficulty"]
-    }
+@app.route("/block_by_hash/<block_hash>")
+def block_by_hash(block_hash):
+
+    for b in blockchain:
+
+        if b["hash"] == block_hash:
+
+            return jsonify({
+                "block": b
+            })
+
+    return jsonify({
+        "error": "not found"
+    }), 404
+
 
 # ==================================================
 # 📊 BLOCK HEADERS (FAST SYNC 🔥)
@@ -6123,14 +5244,13 @@ def background_init():
         time.sleep(15)
 
 # ================================================
-# 🚀 START NODE (ULTRA PRO MAX - BITCOIN STYLE)
+# 🚀 START NODE (BITCOIN STYLE CLEAN FINAL)
 # ================================================
 if __name__ == "__main__":
 
     import os
     import threading
     import time
-    import requests
 
     # =========================
     # CONFIG
@@ -6143,10 +5263,7 @@ if __name__ == "__main__":
         os.environ.get("P2P_PORT", 9334)
     )
 
-    print(
-        "🚀 Starting SomCoin "
-        "(ULTRA PRO MODE)..."
-    )
+    print("🚀 Starting SomCoin Node...")
 
     # =========================
     # SAFE THREAD STARTER
@@ -6158,7 +5275,6 @@ if __name__ == "__main__":
             while True:
 
                 try:
-
                     target()
 
                 except Exception as e:
@@ -6229,30 +5345,11 @@ if __name__ == "__main__":
         )
 
     # =========================
-    # CONNECT SEEDS
-    # =========================
-    try:
-
-        print(
-            f"✅ Connected peers "
-            f"| peers={len(p2p_peers)}"
-        )
-
-    except Exception as e:
-
-        print(
-            "❌ Peer connect error:",
-            e
-        )
-
-    # =========================
-    # REQUEST NETWORK DATA
+    # REQUEST PEERS
     # =========================
     try:
 
         request_peers()
-
-        # request_chain()
 
         print(
             "✅ Requested peer data"
@@ -6262,54 +5359,6 @@ if __name__ == "__main__":
 
         print(
             "❌ Request error:",
-            e
-        )
-
-    # =========================
-    # 🌐 INITIAL SYNC
-    # =========================
-    try:
-
-        # sync_blockchain()
-
-        print(
-            f"✅ Blockchain synced "
-            f"| blocks={len(blockchain)-1}"
-        )
-
-    except Exception as e:
-
-        print(
-            "❌ Sync error:",
-            e
-        )
-
-    # =========================
-    # 🔥 SMART EMPTY CHAIN FIX
-    # =========================
-    try:
-
-        if (
-            len(blockchain) <= 1
-            and len(p2p_peers) > 0
-        ):
-
-            print(
-                "⚠️ Empty chain "
-                "→ forcing resync..."
-            )
-
-            # sync_blockchain()
-
-            print(
-                f"✅ Resynced "
-                f"| blocks={len(blockchain)-1}"
-            )
-
-    except Exception as e:
-
-        print(
-            "❌ Empty-chain fix error:",
             e
         )
 
@@ -6356,18 +5405,8 @@ if __name__ == "__main__":
     )
 
     start_thread(
-        rotate_peers,
-        "Peer Rotation"
-    )
-
-    start_thread(
-        auto_seed_control,
-        "Auto Seed Control"
-    )
-
-   # start_thread(
-       # auto_sync,
-      # "Auto Sync"
+        auto_sync,
+        "Auto Sync"
     )
 
     start_thread(
@@ -6384,11 +5423,6 @@ if __name__ == "__main__":
     )
 
     start_thread(
-        clean_bad_peers,
-        "Bad Peer Cleaner"
-    )
-
-    start_thread(
         clean_peer_ips,
         "Peer IP Cleaner"
     )
@@ -6399,182 +5433,38 @@ if __name__ == "__main__":
     )
 
     # =========================
-    # 🧠 RECOVERY SYSTEM
+    # ORPHAN FIX
     # =========================
-    def lightweight_recovery():
-
-        while True:
-
-            try:
-
-                # reconnect peers
-                if len(p2p_peers) < 3:
-
-                    print(
-                        "⚠️ Low peers "
-                        "→ reconnecting..."
-                    )
-
-                    bootstrap_peers()
-
-                # recreate genesis
-                if len(blockchain) == 0:
-
-                    print(
-                        "⚠️ Chain missing "
-                        "→ creating genesis..."
-                    )
-
-                    create_genesis()
-
-                # 🔥 Bitcoin-style sync fix
-                if (
-                    len(blockchain) <= 1
-                    and len(p2p_peers) > 0
-                ):
-
-                    print(
-                        "⚠️ Empty chain "
-                        "→ syncing network..."
-                    )
-
-                    # sync_blockchain()
-
-                # 🔥 broken utxo fix
-                if (
-                    len(utxo_set) == 0
-                    and len(blockchain) > 1
-                ):
-
-                    print(
-                        "⚠️ Empty UTXO "
-                        "→ rebuilding..."
-                    )
-
-                    rebuild_utxo()
-
-            except Exception as e:
-
-                print(
-                    "Recovery error:",
-                    e
-                )
-
-            time.sleep(15)
-
     start_thread(
-        lightweight_recovery,
-        "Recovery"
+        auto_resolve_orphans,
+        "Orphan Resolver"
     )
-
-    # =========================
-    # ⛏ SMART MINER
-    # =========================
-    def smart_miner():
-
-        miner_address = os.getenv(
-            "MINER_ADDR",
-            ""
-        )
-
-        if not miner_address:
-            return
-
-        print(
-            "⛏ Smart miner started"
-        )
-
-        while True:
-
-            try:
-
-                if len(p2p_peers) < 2:
-
-                    time.sleep(5)
-
-                    continue
-
-                with mempool_lock:
-
-                    if (
-                        len(
-                            pending_transactions
-                        ) == 0
-                    ):
-
-                        time.sleep(2)
-
-                        continue
-
-                with app.test_request_context(
-                    f"/mine/{miner_address}"
-                ):
-
-                    res = mine(
-                        miner_address
-                    )
-
-                data = (
-                    res.get_json()
-                    if res else None
-                )
-
-                if (
-                    data
-                    and "block" in data
-                ):
-
-                    print(
-                        f"✅ Block mined "
-                        f"| height={data['block']}"
-                    )
-
-            except Exception as e:
-
-                print(
-                    "Miner error:",
-                    e
-                )
-
-            time.sleep(1)
-
-    if os.getenv(
-        "AUTO_MINE",
-        "false"
-    ) == "true":
-
-        start_thread(
-            smart_miner,
-            "Smart Miner"
-        )
 
     # =========================
     # FINAL STATUS
     # =========================
+    print("🔥 SomCoin NODE READY")
+
     print(
-        "🔥 SomCoin FULLY READY"
+        f"🌐 HTTP PORT: {HTTP_PORT}"
     )
 
     print(
-        f"🌐 HTTP: {HTTP_PORT}"
+        f"📡 P2P PORT: {P2P_PORT}"
     )
 
     print(
-        f"📡 P2P: {P2P_PORT}"
-    )
-
-    print(
-        f"⛓ Blocks: "
+        f"⛓ BLOCKS: "
         f"{len(blockchain)-1}"
     )
 
     print(
-        f"👥 Peers: "
+        f"👥 PEERS: "
         f"{len(p2p_peers)}"
     )
 
     print(
-        f"💰 UTXOs: "
+        f"💰 UTXOS: "
         f"{len(utxo_set)}"
     )
 
