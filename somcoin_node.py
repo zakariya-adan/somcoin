@@ -3134,17 +3134,25 @@ def is_spam(ip):
 
     return False
 
-# =========================================================
-# 🔥 HASH
-# =========================================================
+# ==================================================
+# 🔥 REAL POW HASH
+# ==================================================
+def calculate_hash(index, previous_hash, timestamp, nonce, tx_str):
 
-def calculate_hash(index, prev_hash, timestamp, nonce, tx_str):
-
-    data = f"{index}{prev_hash}{timestamp}{nonce}{tx_str}"
+    data = (
+        f"{index}"
+        f"{previous_hash}"
+        f"{timestamp}"
+        f"{nonce}"
+        f"{tx_str}"
+    )
 
     return hashlib.sha256(
-        hashlib.sha256(data.encode()).digest()
+        hashlib.sha256(
+            data.encode()
+        ).digest()
     ).hexdigest()
+
 
 # =========================================================
 # 🔥 TX HASH
