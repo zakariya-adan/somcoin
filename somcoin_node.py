@@ -1869,29 +1869,132 @@ def explorer():
 faucet_cache = {}
 
 # =========================
-# MINER API (NEW 🔥)
+# MINER API (ULTRA PRO 🔥)
 # =========================
 @app.route("/get_block_template")
 def get_block_template():
-    if not blockchain:
-        return jsonify({"error": "chain not ready"}), 400
 
-    last = blockchain[-1]
+    try:
 
-    miner_address = request.args.get("address")
+        # =========================
+        # CHAIN READY
+        # =========================
+        if not blockchain:
 
-    if not miner_address:
-        return jsonify({"error": "missing miner address"}), 400
+            return jsonify({
+                "error": "chain not ready"
+            }), 400
 
-    txs = build_block_transactions(miner_address)
+        # =========================
+        # MINER ADDRESS
+        # =========================
+        miner_address = request.args.get(
+            "address"
+        )
 
-    return jsonify({
-        "index": last["index"] + 1,
-        "prev_hash": last["hash"],
-        "difficulty": dynamic_difficulty(),
-        "transactions": txs
-    })
+        if not miner_address:
 
+            return jsonify({
+                "error": "missing miner address"
+            }), 400
+
+        # basic validation
+        if not miner_address.startswith("SOM"):
+
+            return jsonify({
+                "error": "invalid address"
+            }), 400
+
+        # =========================
+        # LAST BLOCK
+        # =========================
+        with blockchain_lock:
+
+            last = blockchain[-1]
+
+            next_index = (
+                last["index"] + 1
+            )
+
+            prev_hash = (
+                last["hash"]
+            )
+
+            difficulty = (
+                dynamic_difficulty()
+            )
+
+        # =========================
+        # BUILD TXS
+        # =========================
+        txs = build_block_transactions(
+            miner_address
+        )
+
+        # =========================
+        # MERKLE ROOT
+        # =========================
+        tx_data = json.dumps(
+            txs,
+            sort_keys=True
+        )
+
+        merkle_root = hashlib.sha256(
+            tx_data.encode()
+        ).hexdigest()
+
+        # =========================
+        # TIMESTAMP
+        # =========================
+        timestamp = int(time.time())
+
+        # =========================
+        # BLOCK HEADER
+        # =========================
+        block_header = (
+
+            f"{next_index}"
+            f"{prev_hash}"
+            f"{timestamp}"
+            f"{merkle_root}"
+        )
+
+        # =========================
+        # RESPONSE
+        # =========================
+        return jsonify({
+
+            "status": "ok",
+
+            "index": next_index,
+
+            "prev_hash": prev_hash,
+
+            "difficulty": difficulty,
+
+            "timestamp": timestamp,
+
+            "merkle_root": merkle_root,
+
+            "header": block_header,
+
+            "transactions": txs,
+
+            "tx_count": len(txs),
+
+            "network_time": time.time()
+        })
+
+    except Exception as e:
+
+        print(
+            "❌ get_block_template error:",
+            e
+        )
+
+        return jsonify({
+            "error": str(e)
+        }), 500
 
 # =========================
 # GET UTXOS
@@ -3195,17 +3298,27 @@ def calculate_chainwork(chain):
 # =========================================================
 # 🔥 VERIFY DIFFICULTY
 # =========================================================
-
 def verify_difficulty(block):
 
     try:
 
-        difficulty = int(block["difficulty"])
+        difficulty = int(
+            block["difficulty"]
+        )
 
+        # =========================
+        # LIMITS
+        # =========================
         if difficulty < MIN_DIFFICULTY:
             return False
 
-        expected = get_current_difficulty()
+        if difficulty > MAX_DIFFICULTY:
+            return False
+
+        # =========================
+        # REAL EXPECTED DIFFICULTY
+        # =========================
+        expected = dynamic_difficulty()
 
         # allow ±1 flexibility
         if abs(difficulty - expected) > 1:
@@ -3213,7 +3326,13 @@ def verify_difficulty(block):
 
         return True
 
-    except:
+    except Exception as e:
+
+        print(
+            "Difficulty verify error:",
+            e
+        )
+
         return False
 
 # =========================================================
@@ -3677,7 +3796,6 @@ def start_background_services():
 
     print("🔥 All background services running")
 
-
 # ==================================================
 # 📩 HANDLE MESSAGE
 # (ULTRA PRO MAX FINAL FIXED 🔥)
@@ -3732,11 +3850,9 @@ def handle_msg(msg, conn=None):
             if peer_ip:
 
                 try:
-
                     peer_port = int(peer_port)
 
                 except:
-
                     return
 
                 # 🚫 ignore self
@@ -3758,17 +3874,21 @@ def handle_msg(msg, conn=None):
                     peer_port
                 ):
 
-                    mark_peer_alive(
+                    peer_name = (
                         f"{peer_ip}:{peer_port}"
                     )
 
+                    mark_peer_alive(
+                        peer_name
+                    )
+
                     reward_peer(
-                        f"{peer_ip}:{peer_port}"
+                        peer_name
                     )
 
                     print(
                         "✅ Verified peer:",
-                        f"{peer_ip}:{peer_port}"
+                        peer_name
                     )
 
                     # =====================================
@@ -3780,12 +3900,16 @@ def handle_msg(msg, conn=None):
 
                             response = {
                                 "type": "peers",
-                                "data": list(p2p_peers)[:50]
+                                "data": list(
+                                    p2p_peers
+                                )[:50]
                             }
 
                             conn.sendall(
                                 (
-                                    json.dumps(response)
+                                    json.dumps(
+                                        response
+                                    )
                                     + "\n"
                                 ).encode()
                             )
@@ -3825,6 +3949,7 @@ def handle_msg(msg, conn=None):
             for t in pending_transactions:
 
                 try:
+
                     existing.add(
                         tx_hash(t)
                     )
@@ -3965,7 +4090,7 @@ def handle_msg(msg, conn=None):
                 # REBROADCAST BLOCK
                 # =====================================
                 p2p_broadcast({
-                    "type": "block",
+                    "type": "compact_block",
                     "data": block
                 })
 
@@ -3974,6 +4099,26 @@ def handle_msg(msg, conn=None):
                 print(
                     "❌ Failed to add block"
                 )
+
+        # =====================================
+        # COMPACT BLOCK
+        # =====================================
+        elif msg_type == "compact_block":
+
+            block = msg.get("data")
+
+            if not block:
+                return
+
+            print(
+                "📦 Compact block received"
+            )
+
+            # reuse block handler
+            handle_msg({
+                "type": "block",
+                "data": block
+            }, conn)
 
         # =====================================
         # GET CHAIN
@@ -4028,7 +4173,9 @@ def handle_msg(msg, conn=None):
 
                     response = {
                         "type": "peers",
-                        "data": list(p2p_peers)[:50]
+                        "data": list(
+                            p2p_peers
+                        )[:50]
                     }
 
                     conn.sendall(
@@ -4050,7 +4197,10 @@ def handle_msg(msg, conn=None):
         # =====================================
         elif msg_type == "peers":
 
-            peers = msg.get("data", [])
+            peers = msg.get(
+                "data",
+                []
+            )
 
             if not isinstance(peers, list):
                 return
@@ -4106,7 +4256,6 @@ def handle_msg(msg, conn=None):
             "⚠️ handle_msg error:",
             e
         )
-
 
 # ==================================================
 # P2P SERVER (FINAL PRO - ULTRA STABLE + SECURE 🔥)
@@ -5936,7 +6085,7 @@ def auto_sync():
 # =========================
 # 🧱 ORPHAN SYSTEM
 # =========================
-orphan_blocks = []
+orphan_blocks = {}
 
 def orphan_blocks_count():
     return len(orphan_blocks)
