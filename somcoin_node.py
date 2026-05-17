@@ -4706,115 +4706,96 @@ MINE_COOLDOWN = 1.5   # anti spam
 # MINE (ULTRA SECURE FINAL PRO MAX 🚀)
 # ==================================================
 
+# IMPORTANT:
+# NODE SHOULD NOT DO HEAVY CPU MINING.
+# miner.py DOES THE REAL MINING.
+# THIS API ONLY PREPARES BLOCK TEMPLATE.
+
 @app.route("/mine/<addr>")
 def mine(addr):
 
+    global blockchain
     global pending_transactions
-    global last_mine_time
-
-    # =========================================
-    # ADDRESS VALIDATION
-    # =========================================
-    if not isinstance(addr, str):
-        return jsonify({"error": "invalid address"})
-
-    if not addr.startswith("SOM"):
-        return jsonify({"error": "invalid address"})
-
-    if len(addr) < 10:
-        return jsonify({"error": "invalid address"})
-
-    # =========================================
-    # RATE LIMIT
-    # =========================================
-    now = time.time()
-
-    if now - last_mine_time < MINE_COOLDOWN:
-        return jsonify({
-            "status": "cooldown",
-            "wait": round(
-                MINE_COOLDOWN - (
-                    now - last_mine_time
-                ),
-                2
-            )
-        })
-
-    last_mine_time = now
-
-    # =========================================
-    # SINGLE MINER LOCK
-    # =========================================
-    if not mining_lock.acquire(blocking=False):
-
-        return jsonify({
-            "status": "already mining"
-        })
 
     try:
 
-        # =========================================
-        # GENESIS CHECK
-        # =========================================
-        if len(blockchain) == 0:
-            create_genesis()
+        # =====================================================
+        # ADDRESS VALIDATION
+        # =====================================================
 
-        # =========================================
-        # MAX SUPPLY STOP
-        # =========================================
-        if block_reward() <= 0:
+        if not isinstance(addr, str):
 
             return jsonify({
-                "status": "max supply reached",
-                "supply": total_supply()
+                "error": "invalid address"
             })
 
-        # =========================================
+        if not addr.startswith("SOM"):
+
+            return jsonify({
+                "error": "invalid address"
+            })
+
+        if len(addr) < 10:
+
+            return jsonify({
+                "error": "invalid address"
+            })
+
+        # =====================================================
+        # GENESIS CHECK
+        # =====================================================
+
+        with blockchain_lock:
+
+            if len(blockchain) == 0:
+                create_genesis()
+
+        # =====================================================
+        # BLOCK REWARD
+        # =====================================================
+
+        reward = block_reward()
+
+        if reward <= 0:
+
+            return jsonify({
+                "error": "max supply reached"
+            })
+
+        # =====================================================
         # MEMPOOL SNAPSHOT
-        # =========================================
+        # =====================================================
+
         with mempool_lock:
+
             mempool_snapshot = list(
                 pending_transactions
             )
 
-        # =========================================
-        # REMOVE DUPLICATES
-        # =========================================
+        # =====================================================
+        # CLEAN TXS
+        # =====================================================
+
+        clean_txs = []
         seen_txids = set()
-        clean_mempool = []
+        used_inputs = set()
+
+        total_block_size = 0
 
         for tx in mempool_snapshot:
 
-            txid = calculate_txid(tx)
-
-            if txid in seen_txids:
-                continue
-
-            seen_txids.add(txid)
-            clean_mempool.append(tx)
-
-        # =========================================
-        # TX PRIORITY (HIGH FEE)
-        # =========================================
-        sorted_txs = sorted(
-            clean_mempool,
-            key=lambda x: (
-                float(x.get("fee", 0)),
-                x.get("timestamp", 0)
-            ),
-            reverse=True
-        )
-
-        # =========================================
-        # VERIFY TXS
-        # =========================================
-        valid_txs = []
-        used_inputs = set()
-        total_block_size = 0
-
-        for tx in sorted_txs:
-
             try:
+
+                if not isinstance(tx, dict):
+                    continue
+
+                txid = tx_hash(tx)
+
+                # duplicate tx
+                if txid in seen_txids:
+                    continue
+
+                seen_txids.add(txid)
 
                 # skip fake coinbase
                 if tx.get("sender") == "NETWORK":
@@ -4824,7 +4805,7 @@ def mine(addr):
                     json.dumps(tx).encode()
                 )
 
-                # anti huge tx
+                # max tx size
                 if tx_size > MAX_TX_SIZE:
                     continue
 
@@ -4836,63 +4817,53 @@ def mine(addr):
                     continue
 
                 # verify tx
-                if verify_tx(
+                if not verify_tx(
                     tx,
                     used_inputs
                 ):
+                    continue
 
-                    valid_txs.append(tx)
-                    total_block_size += tx_size
+                clean_txs.append(tx)
+
+                total_block_size += tx_size
 
                 # tx limit
                 if (
-                    len(valid_txs)
+                    len(clean_txs)
                     >= MAX_TX_PER_BLOCK
                 ):
                     break
 
-            except Exception as e:
-
-                print(
-                    "⚠️ TX skipped:",
-                    e
-                )
-
+            except:
                 continue
 
-        # =========================================
+        # =====================================================
         # TOTAL FEES
-        # =========================================
+        # =====================================================
+
         total_fees = round(
+
             sum(
-                float(
-                    tx.get("fee", 0)
-                )
-                for tx in valid_txs
+                float(tx.get("fee", 0))
+                for tx in clean_txs
             ),
+
             8
         )
 
-        # =========================================
-        # REWARD
-        # =========================================
-        base_reward = block_reward()
+        # =====================================================
+        # FINAL REWARD
+        # =====================================================
 
-        reward_amount = round(
-            base_reward + total_fees,
+        final_reward = round(
+            reward + total_fees,
             8
         )
 
-        # safety
-        if reward_amount <= 0:
-
-            return jsonify({
-                "status": "invalid reward"
-            })
-
-        # =========================================
+        # =====================================================
         # COINBASE TX
-        # =========================================
+        # =====================================================
+
         coinbase_tx = {
 
             "sender": "NETWORK",
@@ -4900,37 +4871,43 @@ def mine(addr):
             "inputs": [],
 
             "outputs": [{
+
                 "address": addr,
-                "amount": reward_amount
+                "amount": final_reward
+
             }],
 
             "timestamp": time.time(),
 
             "txid": hashlib.sha256(
-                f"{addr}{time.time()}{random.random()}".encode()
+
+                f"{addr}{time.time()}".encode()
+
             ).hexdigest()
         }
 
-        # =========================================
-        # BUILD TX LIST
-        # =========================================
+        # =====================================================
+        # BUILD TXS
+        # =====================================================
+
         block_txs = (
             [coinbase_tx] +
-            valid_txs
+            clean_txs
         )
 
-        # =========================================
+        # =====================================================
         # CHAIN STATE
-        # =========================================
+        # =====================================================
+
         with blockchain_lock:
 
             last_block = blockchain[-1]
 
-            index = (
+            next_index = (
                 last_block["index"] + 1
             )
 
-            prev_hash = (
+            previous_hash = (
                 last_block["hash"]
             )
 
@@ -4938,225 +4915,274 @@ def mine(addr):
                 dynamic_difficulty()
             )
 
-        print(
-            f"⛏ Mining block "
-            f"{index} "
-            f"| diff={difficulty}"
-        )
+        # =====================================================
+        # RESPONSE
+        # =====================================================
 
-        # =========================================
-        # MULTI CPU MINING
-        # =========================================
-        cpu_count = max(1, multiprocessing.cpu_count() // 2)
+        return jsonify({
 
-        with multiprocessing.Pool(
-            cpu_count
-        ) as pool:
+            "status": "ok",
 
-            jobs = [
+            "index": next_index,
 
-                pool.apply_async(
-                    mine_worker,
-                    (
-                        i,
-                        cpu_count,
-                        index,
-                        prev_hash,
-                        block_txs,
-                        difficulty
-                    )
-                )
-
-                for i in range(cpu_count)
-            ]
-
-            nonce = None
-            timestamp = None
-            mined_hash = None
-
-            while True:
-
-                # =====================================
-                # CHAIN REORG CHECK
-                # =====================================
-                with blockchain_lock:
-
-                    if (
-                        blockchain[-1]["hash"]
-                        != prev_hash
-                    ):
-
-                        pool.terminate()
-                        pool.join()
-
-                        return jsonify({
-                            "error": "chain changed"
-                        })
-
-                # =====================================
-                # CHECK RESULTS
-                # =====================================
-                for job in jobs:
-
-                    if job.ready():
-
-                        result = job.get()
-
-                        if result:
-
-                            (
-                                nonce,
-                                timestamp,
-                                mined_hash
-                            ) = result
-
-                            break
-
-                if nonce is not None:
-
-                    pool.terminate()
-                    pool.join()
-
-                    break
-
-                time.sleep(0.01)
-
-        # =========================================
-        # BUILD BLOCK
-        # =========================================
-        merkle_root = calculate_merkle_root(
-            block_txs
-        )
-
-        block = {
-
-            "index": index,
-
-            "timestamp": timestamp,
-
-            "transactions": block_txs,
-
-            "nonce": nonce,
-
-            "previous_hash": prev_hash,
+            "previous_hash": previous_hash,
 
             "difficulty": difficulty,
 
-            "hash": mined_hash
-        }
+            "reward": final_reward,
 
-        # =========================================
-        # FINAL VALIDATION
-        # =========================================
+            "fees": total_fees,
+
+            "transactions": block_txs,
+
+            "tx_count": len(block_txs),
+
+            "block_size": total_block_size,
+
+            "network_time": time.time()
+        })
+
+    except Exception as e:
+
+        print("❌ Mine API error:", e)
+
+        return jsonify({
+            "error": str(e)
+        })
+
+
+# =========================================================
+# 🚀 SUBMIT BLOCK
+# =========================================================
+
+@app.route("/submit_block", methods=["POST"])
+def submit_block():
+
+    global blockchain
+    global pending_transactions
+
+    try:
+
+        data = request.get_json()
+
+        if not isinstance(data, dict):
+
+            return jsonify({
+                "error": "invalid block"
+            })
+
+        block = data
+
+        # =====================================================
+        # VALIDATE BLOCK
+        # =====================================================
+
+        if not safe_validate_block(block):
+
+            return jsonify({
+                "error": "invalid block"
+            })
+
+        block_hash = block.get("hash")
+
+        if not block_hash:
+
+            return jsonify({
+                "error": "missing hash"
+            })
+
+        # =====================================================
+        # SAFE ADD
+        # =====================================================
+
         with blockchain_lock:
 
-            # recheck chain
-            if blockchain[-1]["hash"] != prev_hash:
+            # duplicate
+            for b in blockchain:
 
-               return jsonify({
-                   "error": "stale block"
-               })
+                try:
 
-            # validate block
-            if not safe_validate_block(block):
+                    if b["hash"] == block_hash:
 
-               return jsonify({
-                   "error": "invalid block"
-               })
+                        return jsonify({
+                            "error": "duplicate block"
+                        })
+
+                except:
+                    continue
+
+            last_block = blockchain[-1]
+
+            # previous hash
+            if (
+                block["previous_hash"]
+                != last_block["hash"]
+            ):
+
+                return jsonify({
+                    "error": "stale block"
+                })
+
+            # height
+            if (
+                block["index"]
+                != last_block["index"] + 1
+            ):
+
+                return jsonify({
+                    "error": "bad height"
+                })
 
             # add block
-            add_block_to_chain(block)
+            blockchain.append(block)
 
-        # =========================================
+        # =====================================================
+        # UPDATE UTXO
+        # =====================================================
+
+        try:
+
+            update_utxo(block)
+
+        except Exception as e:
+
+            print("⚠️ update_utxo failed:", e)
+
+            rebuild_utxo()
+
+        # =====================================================
         # CLEAN MEMPOOL
-        # =========================================
+        # =====================================================
+
+        confirmed_txids = set()
+
+        for tx in block["transactions"]:
+
+            try:
+
+                confirmed_txids.add(
+                    tx_hash(tx)
+                )
+
+            except:
+                continue
+
         with mempool_lock:
 
-            valid_txids = set(
-                calculate_txid(tx)
-                for tx in valid_txs
-            )
+            cleaned = []
 
-            pending_transactions[:] = [
+            for tx in pending_transactions:
 
-                tx
+                try:
 
-                for tx in pending_transactions
+                    if (
+                        tx_hash(tx)
+                        not in confirmed_txids
+                    ):
+                        cleaned.append(tx)
 
-                if calculate_txid(tx)
-                not in valid_txids
-            ]
+                except:
+                    continue
 
-        # =========================================
+            pending_transactions[:] = cleaned
+
+        # =====================================================
         # SAVE
-        # =========================================
-        save_data()
+        # =====================================================
 
-        # =========================================
+        try:
+
+            save_data()
+
+        except Exception as e:
+
+            print("❌ save error:", e)
+
+        # =====================================================
+        # CACHE
+        # =====================================================
+
+        try:
+
+            add_recent_block(block_hash)
+
+        except:
+            pass
+
+        # =====================================================
         # BROADCAST
-        # =========================================
+        # =====================================================
+
         try:
 
             p2p_broadcast({
 
-                "type": "block",
+                "type": "compact_block",
 
                 "data": block
             })
 
         except Exception as e:
 
-            print(
-                "⚠️ Broadcast error:",
-                e
-            )
+            print("⚠️ broadcast error:", e)
 
-        # =========================================
-        # LOG
-        # =========================================
         print(
-            f"✅ BLOCK MINED: "
-            f"{index} "
-            f"| {mined_hash}"
+            f"🔥 BLOCK ACCEPTED "
+            f"| height={block['index']} "
+            f"| hash={block_hash[:20]}"
         )
 
-        # =========================================
-        # RESPONSE
-        # =========================================
+        # =====================================================
+        # SUCCESS
+        # =====================================================
+
         return jsonify({
 
-            "status": "block mined",
+            "status": "accepted",
 
-            "block": index,
+            "height": block["index"],
 
-            "hash": mined_hash,
-
-            "reward": reward_amount,
-
-            "fees": total_fees,
-
-            "difficulty": dynamic_difficulty(),
-
-            "txs": len(block_txs),
-
-            "size": total_block_size
+            "hash": block_hash
         })
 
     except Exception as e:
 
-        print(
-            "❌ Mining error:",
-            e
-        )
+        print("❌ submit block error:", e)
 
         return jsonify({
             "error": str(e)
         })
 
-    finally:
 
-        if mining_lock.locked():
-            mining_lock.release()
+# =========================================================
+# 🚀 HEALTH
+# =========================================================
+
+@app.route("/health")
+def health():
+
+    try:
+
+        return jsonify({
+
+            "status": "ok",
+
+            "blocks": len(blockchain),
+
+            "peers": len(p2p_peers),
+
+            "mempool": len(pending_transactions),
+
+            "difficulty": dynamic_difficulty(),
+
+            "network": "SomCoin"
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "error": str(e)
+        })
 
 # ==================================================
 # GLOBAL STATE
