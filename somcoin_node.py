@@ -1284,79 +1284,7 @@ def pow_hash(data):
 def build_header(index, prev_hash, timestamp, tx_str):
     header = f"{index}{prev_hash}{timestamp}{tx_str}"
     return header.encode()
-# ==================================================
-# MINER WORKER
-# ==================================================
-def mine_worker(start, step, index, prev_hash, txs, difficulty):
 
-    nonce = start
-
-    # timestamp hal mar
-    timestamp = time.time()
-
-    # json hal mar
-    tx_str = json.dumps(txs, sort_keys=True)
-
-    while True:
-
-        h = calculate_hash(
-            index,
-            prev_hash,
-            timestamp,
-            nonce,
-            tx_str
-        )
-
-        if h.startswith("0" * difficulty):
-            return nonce, timestamp, h
-
-        nonce += step
-
-
-# ==================================================
-# MULTI CPU MINER
-# ==================================================
-
-def mine_block(index, prev_hash, block_txs, difficulty):
-
-    # leave 1 cpu for node/system
-    cpu = max(1, multiprocessing.cpu_count() - 1)
-
-    with multiprocessing.Pool(cpu) as pool:
-
-        jobs = []
-
-        for i in range(cpu):
-
-            job = pool.apply_async(
-                mine_worker,
-                (
-                    i,
-                    cpu,
-                    index,
-                    prev_hash,
-                    block_txs,
-                    difficulty
-                )
-            )
-
-            jobs.append(job)
-
-        while True:
-
-            for job in jobs:
-
-                if job.ready():
-
-                    nonce, ts, h = job.get()
-
-                    # stop all workers
-                    pool.terminate()
-                    pool.join()
-
-                    return nonce, ts, h
-
-            time.sleep(0.05)
 
 # ==================================================
 # GENESIS BLOCK (LOCKED + BITCOIN STYLE 🚀)
