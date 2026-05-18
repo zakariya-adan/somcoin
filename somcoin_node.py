@@ -37,8 +37,8 @@ leaderboard = {}
 # =========================
 app = Flask(__name__)
 
-MAX_DIFFICULTY = 4
-MIN_DIFFICULTY = 2
+MAX_DIFFICULTY = 6
+MIN_DIFFICULTY = 4
 
 # =========================
 # DIFFICULTY SYSTEM
@@ -819,7 +819,7 @@ PEERS_FILE = "peers.json"
 
 blockchain = []
 pending_transactions = []
-
+orphan_blocks = {}
 
 # ==================================================
 # UTXO SET
@@ -1735,133 +1735,6 @@ def explorer():
 
 faucet_cache = {}
 
-# =========================
-# MINER API (ULTRA PRO 🔥)
-# =========================
-@app.route("/get_block_template")
-def get_block_template():
-
-    try:
-
-        # =========================
-        # CHAIN READY
-        # =========================
-        if not blockchain:
-
-            return jsonify({
-                "error": "chain not ready"
-            }), 400
-
-        # =========================
-        # MINER ADDRESS
-        # =========================
-        miner_address = request.args.get(
-            "address"
-        )
-
-        if not miner_address:
-
-            return jsonify({
-                "error": "missing miner address"
-            }), 400
-
-        # basic validation
-        if not miner_address.startswith("SOM"):
-
-            return jsonify({
-                "error": "invalid address"
-            }), 400
-
-        # =========================
-        # LAST BLOCK
-        # =========================
-        with blockchain_lock:
-
-            last = blockchain[-1]
-
-            next_index = (
-                last["index"] + 1
-            )
-
-            prev_hash = (
-                last["hash"]
-            )
-
-            difficulty = (
-                dynamic_difficulty()
-            )
-
-        # =========================
-        # BUILD TXS
-        # =========================
-        txs = build_block_transactions(
-            miner_address
-        )
-
-        # =========================
-        # MERKLE ROOT
-        # =========================
-        tx_data = json.dumps(
-            txs,
-            sort_keys=True
-        )
-
-        merkle_root = hashlib.sha256(
-            tx_data.encode()
-        ).hexdigest()
-
-        # =========================
-        # TIMESTAMP
-        # =========================
-        timestamp = int(time.time())
-
-        # =========================
-        # BLOCK HEADER
-        # =========================
-        block_header = (
-
-            f"{next_index}"
-            f"{prev_hash}"
-            f"{timestamp}"
-            f"{merkle_root}"
-        )
-
-        # =========================
-        # RESPONSE
-        # =========================
-        return jsonify({
-
-            "status": "ok",
-
-            "index": next_index,
-
-            "prev_hash": prev_hash,
-
-            "difficulty": difficulty,
-
-            "timestamp": timestamp,
-
-            "merkle_root": merkle_root,
-
-            "header": block_header,
-
-            "transactions": txs,
-
-            "tx_count": len(txs),
-
-            "network_time": time.time()
-        })
-
-    except Exception as e:
-
-        print(
-            "❌ get_block_template error:",
-            e
-        )
-
-        return jsonify({
-            "error": str(e)
-        }), 500
 
 # =========================
 # GET UTXOS
@@ -2797,6 +2670,210 @@ def tx_hash(tx):
         hashlib.sha256(data).digest()
     ).hexdigest()
 
+# ==================================================
+# 🌲 REAL MERKLE TREE
+# ==================================================
+def merkle_root(transactions):
+
+    if not transactions:
+        return hashlib.sha256(b"").hexdigest()
+
+    hashes = [
+
+        tx_hash(tx)
+
+        for tx in transactions
+    ]
+
+    while len(hashes) > 1:
+
+        # odd count fix
+        if len(hashes) % 2 != 0:
+            hashes.append(hashes[-1])
+
+        new_level = []
+
+        for i in range(0, len(hashes), 2):
+
+            combined = (
+                hashes[i] +
+                hashes[i + 1]
+            )
+
+            h = hashlib.sha256(
+                hashlib.sha256(
+                    combined.encode()
+                ).digest()
+            ).hexdigest()
+
+            new_level.append(h)
+
+        hashes = new_level
+
+    return hashes[0]
+
+
+# =========================
+# MINER API (ULTRA PRO 🔥)
+# =========================
+@app.route("/get_block_template")
+def get_block_template():
+
+    try:
+
+        # =========================
+        # CHAIN READY
+        # =========================
+        if not blockchain:
+
+            return jsonify({
+                "error": "chain not ready"
+            }), 400
+
+        # =========================
+        # MINER ADDRESS
+        # =========================
+        miner_address = request.args.get(
+            "address"
+        )
+
+        if not miner_address:
+
+            return jsonify({
+                "error": "missing miner address"
+            }), 400
+
+        # =========================
+        # BASIC ADDRESS CHECK
+        # =========================
+        if not isinstance(miner_address, str):
+
+            return jsonify({
+                "error": "invalid address"
+            }), 400
+
+        if not miner_address.startswith("SOM"):
+
+            return jsonify({
+                "error": "invalid address"
+            }), 400
+
+        # =========================
+        # LAST BLOCK
+        # =========================
+        with blockchain_lock:
+
+            if len(blockchain) == 0:
+
+                return jsonify({
+                    "error": "empty chain"
+                }), 400
+
+            last = blockchain[-1]
+
+            next_index = (
+                last["index"] + 1
+            )
+
+            prev_hash = (
+                last["hash"]
+            )
+
+            difficulty = (
+                dynamic_difficulty()
+            )
+
+        # =========================
+        # BUILD TXS
+        # =========================
+        txs = build_block_transactions(
+            miner_address
+        )
+
+        # =========================
+        # TX CHECK
+        # =========================
+        if not isinstance(txs, list):
+
+            return jsonify({
+                "error": "invalid tx list"
+            }), 500
+
+        if len(txs) == 0:
+
+            return jsonify({
+                "error": "empty tx list"
+            }), 500
+
+        # =========================
+        # REAL MERKLE ROOT 🌲
+        # =========================
+        merkle = merkle_root(txs)
+
+        # =========================
+        # TIMESTAMP
+        # =========================
+        timestamp = int(time.time())
+
+        # =========================
+        # BLOCK HEADER
+        # =========================
+        block_header = (
+
+            f"{next_index}"
+            f"{prev_hash}"
+            f"{timestamp}"
+            f"{merkle}"
+        )
+
+        # =========================
+        # HEADER HASH
+        # =========================
+        header_hash = hashlib.sha256(
+            hashlib.sha256(
+                block_header.encode()
+            ).digest()
+        ).hexdigest()
+
+        # =========================
+        # RESPONSE
+        # =========================
+        return jsonify({
+
+            "status": "ok",
+
+            "index": next_index,
+
+            "prev_hash": prev_hash,
+
+            "difficulty": difficulty,
+
+            "timestamp": timestamp,
+
+            "merkle_root": merkle,
+
+            "header": block_header,
+
+            "header_hash": header_hash,
+
+            "transactions": txs,
+
+            "tx_count": len(txs),
+
+            "network_time": time.time()
+        })
+
+    except Exception as e:
+
+        print(
+            "❌ get_block_template error:",
+            e
+        )
+
+        return jsonify({
+            "error": str(e)
+        }), 500
+
 # =========================================================
 # 🔥 CHAINWORK
 # =========================================================
@@ -2820,9 +2897,8 @@ def calculate_chainwork(chain):
 
     return total
 
-
 # =========================================================
-# 🔥 VALIDATE BLOCK
+# 🔥 VALIDATE BLOCK (ULTRA SECURE FINAL)
 # =========================================================
 
 def safe_validate_block(block):
@@ -2845,6 +2921,43 @@ def safe_validate_block(block):
                 return False
 
         # =====================================================
+        # BLOCK SIZE LIMIT
+        # =====================================================
+
+        block_size = len(
+            json.dumps(block).encode()
+        )
+
+        if block_size > 1_000_000:
+            return False
+
+        # =====================================================
+        # BASIC TYPES
+        # =====================================================
+
+        if not isinstance(block["transactions"], list):
+            return False
+
+        if len(block["transactions"]) == 0:
+            return False
+
+        if not isinstance(block["index"], int):
+            return False
+
+        if not isinstance(block["nonce"], int):
+            return False
+
+        # =====================================================
+        # NEGATIVE CHECKS
+        # =====================================================
+
+        if block["index"] < 0:
+            return False
+
+        if block["nonce"] < 0:
+            return False
+
+        # =====================================================
         # GENESIS VERIFY
         # =====================================================
 
@@ -2865,6 +2978,13 @@ def safe_validate_block(block):
             block["timestamp"]
             > time.time() + MAX_FUTURE_TIME
         ):
+            return False
+
+        # =====================================================
+        # OLD TIME CHECK
+        # =====================================================
+
+        if block["timestamp"] < 1700000000:
             return False
 
         # =====================================================
@@ -2900,9 +3020,73 @@ def safe_validate_block(block):
 
         difficulty = int(block["difficulty"])
 
+        if difficulty < MIN_DIFFICULTY:
+            return False
+
+        if difficulty > MAX_DIFFICULTY:
+            return False
+
         if not block["hash"].startswith(
             "0" * difficulty
         ):
+            return False
+
+        # =====================================================
+        # HASH LENGTH CHECK
+        # =====================================================
+
+        if len(block["hash"]) != 64:
+            return False
+
+        # =====================================================
+        # COINBASE VERIFY
+        # =====================================================
+
+        coinbase = block["transactions"][0]
+
+        # first tx MUST be NETWORK
+        if coinbase.get("sender") != "NETWORK":
+            return False
+
+        reward = 0
+
+        for out in coinbase.get("outputs", []):
+
+            try:
+
+                amount = float(
+                    out.get("amount", 0)
+                )
+
+                if amount <= 0:
+                    return False
+
+                reward += amount
+
+            except:
+                return False
+
+        # =====================================================
+        # TOTAL FEES
+        # =====================================================
+
+        fees = 0
+
+        for tx in block["transactions"][1:]:
+
+            try:
+
+                fees += float(
+                    tx.get("fee", 0)
+                )
+
+            except:
+                pass
+
+        max_reward = block_reward() + fees
+
+        # anti-overmint
+        if reward > max_reward:
             return False
 
         # =====================================================
@@ -2916,6 +3100,10 @@ def safe_validate_block(block):
             if not verify_tx(tx, used_inputs):
                 return False
 
+        # =====================================================
+        # BLOCK PASSED
+        # =====================================================
+
         return True
 
     except Exception as e:
@@ -2923,8 +3111,6 @@ def safe_validate_block(block):
         print("❌ validate block error:", e)
 
         return False
-
-
 
 # =========================
 # PING PEERS (KEEP ALIVE 🔥)
@@ -3256,6 +3442,10 @@ def handle_msg(msg, conn=None):
             public_key = msg.get("public_key")
             signature = msg.get("signature")
 
+            # VERSION CHECK
+            if msg.get("version") != VERSION:
+                return
+
             # 🚫 reject fake nodes
             if not verify_node(
                 node_id,
@@ -3413,9 +3603,10 @@ def handle_msg(msg, conn=None):
                 != prev_hash
             ):
 
-                orphan_blocks[
-                    prev_hash
-                ] = block
+                orphan_blocks.setdefault(
+                    prev_hash,
+                    []
+                ).append(block)
 
                 print(
                     "⚠️ Orphan block stored"
@@ -3441,11 +3632,13 @@ def handle_msg(msg, conn=None):
 
                 if block_hash in orphan_blocks:
 
-                    orphan = orphan_blocks.pop(
+                    orphan_list = orphan_blocks.pop(
                         block_hash
                     )
 
-                    process_new_block(orphan)
+                    for orphan in orphan_list:
+
+                        process_new_block(orphan)
 
                     print(
                         "✅ Orphan connected"
@@ -3696,7 +3889,7 @@ def p2p_server():
                         # =========================
                         # SIZE LIMIT (ANTI-SPAM)
                         # =========================
-                        if len(line) > 100000:
+                        if len(line) > 1_000_000:
                             update_ip_reputation(ip, False)
                             continue
 
@@ -3881,7 +4074,9 @@ MINE_COOLDOWN = 1.5   # anti spam
 # ==================================================
 # 🚀 PROCESS NEW BLOCK
 # SINGLE SOURCE OF TRUTH
+# ULTRA SECURE FINAL 2026
 # ==================================================
+
 def process_new_block(block):
 
     global blockchain
@@ -3890,86 +4085,213 @@ def process_new_block(block):
     try:
 
         # =========================
-        # VALIDATE
+        # BASIC CHECK
         # =========================
+
+        if not isinstance(block, dict):
+            return False
+
+        block_hash = block.get("hash")
+
+        if not block_hash:
+            return False
+
+        # =========================
+        # VALIDATE BLOCK
+        # =========================
+
         if not safe_validate_block(block):
 
             print("❌ Invalid block")
+
             return False
 
         with blockchain_lock:
 
             # =========================
+            # EMPTY CHAIN FIX
+            # =========================
+
+            if len(blockchain) == 0:
+
+                blockchain.append(block)
+
+                save_data()
+
+                return True
+
+            # =========================
             # DUPLICATE CHECK
             # =========================
+
             for b in blockchain:
 
-                if b["hash"] == block["hash"]:
-                    return False
+                try:
+
+                    if b["hash"] == block_hash:
+
+                        print("⚠️ Duplicate block")
+
+                        return False
+
+                except:
+                    continue
 
             last_block = blockchain[-1]
 
             # =========================
-            # PREVIOUS HASH
+            # PREVIOUS HASH CHECK
             # =========================
-            if block["previous_hash"] != last_block["hash"]:
+
+            if (
+                block["previous_hash"]
+                != last_block["hash"]
+            ):
+
+                print("⚠️ Bad previous hash")
+
                 return False
 
             # =========================
             # HEIGHT CHECK
             # =========================
-            if block["index"] != last_block["index"] + 1:
+
+            if (
+                block["index"]
+                != last_block["index"] + 1
+            ):
+
+                print("⚠️ Bad height")
+
+                return False
+
+            # =========================
+            # TIMESTAMP CHECK
+            # =========================
+
+            if (
+                block["timestamp"]
+                <= last_block["timestamp"]
+            ):
+
+                print("⚠️ Bad timestamp")
+
                 return False
 
             # =========================
             # ADD BLOCK
             # =========================
+
             blockchain.append(block)
 
         # =========================
         # UPDATE UTXO
         # =========================
+
         try:
+
             update_utxo(block)
 
-        except:
+        except Exception as e:
+
+            print(
+                "⚠️ update_utxo failed:",
+                e
+            )
+
             rebuild_utxo()
 
         # =========================
         # CLEAN MEMPOOL
         # =========================
+
         confirmed = set()
 
         for tx in block["transactions"]:
 
             try:
-                confirmed.add(tx_hash(tx))
+
+                confirmed.add(
+                    tx_hash(tx)
+                )
+
             except:
                 pass
 
-        pending_transactions = [
+        with mempool_lock:
 
-            tx for tx in pending_transactions
+            cleaned = []
 
-            if tx_hash(tx) not in confirmed
-        ]
+            for tx in pending_transactions:
+
+                try:
+
+                    if (
+                        tx_hash(tx)
+                        not in confirmed
+                    ):
+
+                        cleaned.append(tx)
+
+                except:
+                    continue
+
+            pending_transactions[:] = cleaned
+
+        # =========================
+        # RECENT CACHE
+        # =========================
+
+        try:
+
+            add_recent_block(block_hash)
+
+        except:
+            pass
 
         # =========================
         # SAVE
         # =========================
-        save_data()
+
+        try:
+
+            save_data()
+
+        except Exception as e:
+
+            print(
+                "❌ save error:",
+                e
+            )
 
         # =========================
         # BROADCAST
         # =========================
-        p2p_broadcast({
-            "type": "block",
-            "data": block
-        })
+
+        try:
+
+            p2p_broadcast({
+
+                "type": "compact_block",
+
+                "data": block
+            })
+
+        except Exception as e:
+
+            print(
+                "⚠️ broadcast error:",
+                e
+            )
+
+        # =========================
+        # SUCCESS LOG
+        # =========================
 
         print(
-            f"✅ Block accepted: "
-            f"{block['index']}"
+            f"🔥 BLOCK ACCEPTED "
+            f"| height={block['index']} "
+            f"| hash={block_hash[:20]}"
         )
 
         return True
