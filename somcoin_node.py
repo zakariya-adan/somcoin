@@ -1152,8 +1152,8 @@ def load_data():
 TARGET_BLOCK_TIME = 60
 difficulty = 4
 TX_FEE = 0.01
-MAX_TX_PER_BLOCK = 50
-MAX_MEMPOOL = 1000
+MAX_TX_PER_BLOCK = 20
+MAX_MEMPOOL = 300
 MAX_INPUTS = 20
 
 initial_reward = 10
@@ -1175,25 +1175,27 @@ def build_block_transactions(miner_address):
         reverse=True
     )
 
-    txs = txs[:MAX_TX_PER_BLOCK]
+    # 🔥 HARD LIMIT
+    txs = txs[:10]
 
-    # block size limit
-    while len(json.dumps(txs)) > 1_000_000 and txs:
-        txs.pop()
-
-    total_fees = sum(tx.get("fee", 0) for tx in txs)
+    total_fees = sum(
+        tx.get("fee", 0)
+        for tx in txs
+    )
 
     coinbase = {
         "sender": "NETWORK",
         "inputs": [],
         "outputs": [{
             "address": miner_address,
-            "amount": round(block_reward() + total_fees, 8)
+            "amount": round(
+                block_reward() + total_fees,
+                8
+            )
         }]
     }
 
     return [coinbase] + txs
-
 
 # ==================================================
 # GENESIS BLOCK (LOCKED + BITCOIN STYLE 🚀)
