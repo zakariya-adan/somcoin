@@ -5565,6 +5565,129 @@ def background_init():
 
         time.sleep(15)
 
+# ==================================================
+# 🌍 REQUEST PEERS
+# ==================================================
+def request_peers():
+
+    for peer in list(p2p_peers):
+
+        try:
+
+            if ":" not in peer:
+                continue
+
+            ip, port = peer.split(":")
+            port = int(port)
+
+            s = socket.socket(
+                socket.AF_INET,
+                socket.SOCK_STREAM
+            )
+
+            s.settimeout(5)
+
+            s.connect((ip, port))
+
+            s.sendall(
+                (
+                    json.dumps({
+                        "type": "get_peers"
+                    }) + "\n"
+                ).encode()
+            )
+
+            s.close()
+
+        except:
+            continue
+
+
+# ==================================================
+# 🌱 BOOTSTRAP PEERS
+# ==================================================
+def bootstrap_peers():
+
+    while True:
+
+        try:
+
+            for seed in SEED_NODES:
+
+                try:
+
+                    if ":" not in seed:
+                        continue
+
+                    ip, port = seed.split(":")
+                    port = int(port)
+
+                    # skip self
+                    if (
+                        ip == NODE_IP
+                        and port == P2P_PORT
+                    ):
+                        continue
+
+                    s = socket.socket(
+                        socket.AF_INET,
+                        socket.SOCK_STREAM
+                    )
+
+                    s.settimeout(5)
+
+                    result = s.connect_ex(
+                        (ip, port)
+                    )
+
+                    if result != 0:
+                        s.close()
+                        continue
+
+                    hello = {
+
+                        "type": "hello",
+
+                        "public_ip": NODE_IP,
+
+                        "port": P2P_PORT,
+
+                        "node_id": NODE_ID,
+
+                        "public_key": NODE_PUBLIC_KEY,
+
+                        "signature": sign_message(
+                            NODE_ID
+                        ),
+
+                        "version": VERSION,
+
+                        "timestamp": time.time()
+                    }
+
+                    s.sendall(
+                        (
+                            json.dumps(hello)
+                            + "\n"
+                        ).encode()
+                    )
+
+                    s.close()
+
+                    add_peer_safe(ip, port)
+
+                except:
+                    continue
+
+        except Exception as e:
+
+            print(
+                "Bootstrap error:",
+                e
+            )
+
+        time.sleep(30)
+
 # ================================================
 # 🚀 START NODE (BITCOIN STYLE CLEAN FINAL)
 # ================================================
