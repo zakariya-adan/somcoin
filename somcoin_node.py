@@ -5688,6 +5688,47 @@ def bootstrap_peers():
 
         time.sleep(30)
 
+# ==================================================
+# 🧠 SMART PEER DISCOVERY
+# ==================================================
+def smart_discovery():
+
+    while True:
+
+        try:
+
+            # request peers
+            request_peers()
+
+            # bootstrap seeds
+            for seed in SEED_NODES:
+
+                try:
+
+                    if ":" not in seed:
+                        continue
+
+                    ip, port = seed.split(":")
+                    port = int(port)
+
+                    add_peer_safe(ip, port)
+
+                except:
+                    continue
+
+            print(
+                "✅ Smart discovery updated"
+            )
+
+        except Exception as e:
+
+            print(
+                "❌ Smart discovery error:",
+                e
+            )
+
+        time.sleep(60)
+
 # ================================================
 # 🚀 START NODE (BITCOIN STYLE CLEAN FINAL)
 # ================================================
