@@ -829,7 +829,7 @@ utxo_set = {}
 
 address_balances = {}
 
-blockchain_lock = threading.Lock()
+blockchain_lock = threading.RLock()
 
 # ==================================================
 # 💾 STORAGE SYSTEM (ULTRA SAFE + PRODUCTION)
@@ -4812,7 +4812,7 @@ def get_job():
         # GET TEMPLATE
         # =========================================
         template = requests.get(
-            "http://127.0.0.1:9443/get_block_template",
+            f"http://127.0.0.1:9443/get_block_template?address={ADDRESS}",
             timeout=5
         ).json()
 
