@@ -37,8 +37,8 @@ leaderboard = {}
 # =========================
 app = Flask(__name__)
 
-MAX_DIFFICULTY = 4
-MIN_DIFFICULTY = 2
+MAX_DIFFICULTY = 5
+MIN_DIFFICULTY = 3
 
 # =========================
 # DIFFICULTY SYSTEM

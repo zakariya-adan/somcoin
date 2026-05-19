@@ -195,7 +195,7 @@ signal.signal(
 )
 
 # =========================================================
-# ⛏ MINER
+# ⛏ ULTRA STABLE  STYLE MINER
 # =========================================================
 
 def mine():
@@ -207,10 +207,6 @@ def mine():
     print("🌐 Node:", NODE_URL)
     print("💰 Address:", ADDRESS)
 
-    # =====================================================
-    # START HEALTH THREAD
-    # =====================================================
-
     threading.Thread(
         target=health_check,
         daemon=True
@@ -220,18 +216,26 @@ def mine():
 
         try:
 
-            # =================================================
-            # GET BLOCK TEMPLATE
-            # =================================================
+            # =============================================
+            # GET TEMPLATE
+            # =============================================
 
             tpl = get_template()
 
-            if not tpl:
+            if (
+                not tpl or
+                "error" in tpl
+            ):
 
-                print("❌ Empty template")
+                print("❌ Template error")
 
                 time.sleep(2)
+
                 continue
+
+            # =============================================
+            # BLOCK DATA
+            # =============================================
 
             index = tpl["index"]
 
@@ -241,11 +245,14 @@ def mine():
                 tpl["difficulty"]
             )
 
+            timestamp = tpl["timestamp"]
+
             txs = tpl["transactions"]
 
             tx_str = json.dumps(
                 txs,
-                sort_keys=True
+                sort_keys=True,
+                separators=(",", ":")
             )
 
             print(
@@ -262,36 +269,36 @@ def mine():
 
             start = time.time()
 
-            # =================================================
+            target = "0" * difficulty
+
+            # =============================================
             # MINING LOOP
-            # =================================================
+            # =============================================
 
             while running:
 
-                # =============================================
-                # REFRESH TEMPLATE
-                # =============================================
+                # =========================================
+                # TEMPLATE REFRESH
+                # =========================================
 
                 if (
-                    nonce
-                    %
+                    nonce %
                     TEMPLATE_REFRESH_NONCE
-                    ==
-                    0
+                    == 0
                 ):
 
                     try:
 
                         latest = get_template()
 
+                        # stale block fix
                         if (
                             latest["prev_hash"]
                             != prev_hash
                         ):
 
                             print(
-                                "\n🔄 New block detected "
-                                "→ restarting miner"
+                                "\n🔄 New block detected"
                             )
 
                             break
@@ -299,13 +306,13 @@ def mine():
                     except Exception as e:
 
                         print(
-                            "⚠️ Template refresh error:",
+                            "⚠️ Refresh error:",
                             e
                         )
 
-                timestamp = int(
-                    time.time()
-                )
+                # =========================================
+                # BUILD BLOCK HASH
+                # =========================================
 
                 block_data = (
 
@@ -322,59 +329,53 @@ def mine():
                 )
 
                 hashes += 1
-
                 shares += 1
 
-                # =============================================
+                # =========================================
                 # HASHRATE
-                # =============================================
+                # =========================================
 
                 if (
-                    hashes
-                    %
+                    hashes %
                     HASH_UPDATE_INTERVAL
-                    ==
-                    0
+                    == 0
                 ):
 
                     elapsed = (
                         time.time() - start
                     )
 
-                    if elapsed > 0:
+                    if elapsed <= 0:
+                        elapsed = 1
 
-                        hr = int(
-                            hashes / elapsed
-                        )
+                    hr = int(
+                        hashes / elapsed
+                    )
 
-                        current_hashrate = hr
+                    current_hashrate = hr
 
-                        print(
-                            f"⚡ {hr:,} H/s "
-                            f"| Nonce {nonce}"
-                        )
+                    print(
+                        f"⚡ {hr:,} H/s "
+                        f"| Nonce {nonce}"
+                    )
 
-                        send_hashrate(
-                            hr,
-                            shares
-                        )
+                    send_hashrate(
+                        hr,
+                        shares
+                    )
 
-                # =============================================
+                # =========================================
                 # BLOCK FOUND
-                # =============================================
+                # =========================================
 
-                if h.startswith(
-                    "0" * difficulty
-                ):
+                if h.startswith(target):
 
                     elapsed = round(
                         time.time() - start,
                         2
                     )
 
-                    print(
-                        "\n🔥 BLOCK FOUND"
-                    )
+                    print("\n🔥 BLOCK FOUND")
 
                     print(
                         "🧱 Hash:",
@@ -416,9 +417,9 @@ def mine():
                         h
                     }
 
-                    # =========================================
+                    # =====================================
                     # SUBMIT BLOCK
-                    # =========================================
+                    # =====================================
 
                     result = submit_block(
                         block
@@ -429,8 +430,28 @@ def mine():
                         result
                     )
 
-                    # IMPORTANT
-                    # ALWAYS RESTART TEMPLATE
+                    # =====================================
+                    # SUCCESS
+                    # =====================================
+
+                    if (
+                        isinstance(result, dict)
+                        and
+                        result.get("status")
+                        == "accepted"
+                    ):
+
+                        print(
+                            "✅ BLOCK ACCEPTED"
+                        )
+
+                    else:
+
+                        print(
+                            "❌ BLOCK REJECTED"
+                        )
+
+                    # ALWAYS NEW TEMPLATE
                     break
 
                 nonce += 1
@@ -440,10 +461,6 @@ def mine():
 
                     nonce = 0
 
-        # =====================================================
-        # CTRL+C
-        # =====================================================
-
         except KeyboardInterrupt:
 
             print(
@@ -452,21 +469,16 @@ def mine():
 
             break
 
-        # =====================================================
-        # ERROR
-        # =====================================================
-
         except Exception as e:
 
             print(
-                "❌ Error:",
+                "❌ Miner error:",
                 e
             )
 
             time.sleep(
                 AUTO_RECONNECT_DELAY
             )
-
 
 # =========================================================
 # 🚀 START
