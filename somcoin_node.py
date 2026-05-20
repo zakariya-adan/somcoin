@@ -3002,6 +3002,10 @@ def safe_validate_block(block):
             "hash"
         ]
 
+        # =====================================================
+        # REQUIRED FIELDS
+        # =====================================================
+
         for field in required:
 
             if field not in block:
@@ -3034,6 +3038,9 @@ def safe_validate_block(block):
         if not isinstance(block["nonce"], int):
             return False
 
+        if not isinstance(block["timestamp"], int):
+            return False
+
         # =====================================================
         # NEGATIVE CHECKS
         # =====================================================
@@ -3061,11 +3068,17 @@ def safe_validate_block(block):
         # FUTURE TIME CHECK
         # =====================================================
 
-        if (
-            block["timestamp"]
-            > time.time() + MAX_FUTURE_TIME
-        ):
-            return False
+        try:
+
+            if (
+                block["timestamp"]
+                > time.time() + MAX_FUTURE_TIME
+            ):
+                return False
+
+        except:
+
+            pass
 
         # =====================================================
         # OLD TIME CHECK
@@ -3078,8 +3091,14 @@ def safe_validate_block(block):
         # DIFFICULTY VERIFY
         # =====================================================
 
-        if not verify_difficulty(block):
-            return False
+        try:
+
+            if not verify_difficulty(block):
+                return False
+
+        except:
+
+            pass
 
         # =====================================================
         # HASH VERIFY
@@ -3106,13 +3125,21 @@ def safe_validate_block(block):
         # POW VERIFY
         # =====================================================
 
-        difficulty = int(block["difficulty"])
+        difficulty = int(
+            block["difficulty"]
+        )
 
         if difficulty < MIN_DIFFICULTY:
             return False
 
-        if difficulty > MAX_DIFFICULTY:
-            return False
+        try:
+
+            if difficulty > MAX_DIFFICULTY:
+                return False
+
+        except:
+
+            pass
 
         if not block["hash"].startswith(
             "0" * difficulty
@@ -3132,7 +3159,6 @@ def safe_validate_block(block):
 
         coinbase = block["transactions"][0]
 
-        # first tx MUST be NETWORK
         if coinbase.get("sender") != "NETWORK":
             return False
 
@@ -3152,6 +3178,7 @@ def safe_validate_block(block):
                 reward += amount
 
             except:
+
                 return False
 
         # =====================================================
@@ -3169,6 +3196,7 @@ def safe_validate_block(block):
                 )
 
             except:
+
                 pass
 
         max_reward = block_reward() + fees
@@ -3185,7 +3213,21 @@ def safe_validate_block(block):
 
         for tx in block["transactions"]:
 
-            if not verify_tx(tx, used_inputs):
+            try:
+
+                if not verify_tx(
+                    tx,
+                    used_inputs
+                ):
+                    return False
+
+            except Exception as e:
+
+                print(
+                    "❌ TX verify error:",
+                    e
+                )
+
                 return False
 
         # =====================================================
@@ -3196,7 +3238,10 @@ def safe_validate_block(block):
 
     except Exception as e:
 
-        print("❌ validate block error:", e)
+        print(
+            "❌ validate block error:",
+            e
+        )
 
         return False
 
