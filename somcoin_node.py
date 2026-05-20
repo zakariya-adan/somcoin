@@ -1269,6 +1269,7 @@ def create_genesis():
     tx_str = json.dumps(
         genesis["transactions"],
         sort_keys=True
+        separators=(",", ":")
     )
 
     genesis_hash = calculate_hash(
@@ -2269,35 +2270,116 @@ def verify_tx(tx, used_inputs=None):
 # ==================================================
 def validate_block(b, chain_ref):
 
-    if b["index"] != len(chain_ref):
-        return False
+    try:
 
-    if b["previous_hash"] != chain_ref[-1]["hash"]:
-        return False
-
-    # same tx encoding as miner
-    tx_str = json.dumps(b["transactions"], sort_keys=True)
-
-    h = calculate_hash(
-        b["index"],
-        b["previous_hash"],
-        b["timestamp"],
-        b["nonce"],
-        tx_str
-    )
-
-    if h != b["hash"]:
-        return False
-
-    # difficulty check
-    if not h.startswith("0" * b["difficulty"]):
-        return False
-
-    for tx in b["transactions"]:
-        if not verify_tx(tx):
+        # =========================
+        # BASIC CHECKS
+        # =========================
+        if not isinstance(b, dict):
             return False
 
-    return True
+        required = [
+            "index",
+            "previous_hash",
+            "timestamp",
+            "nonce",
+            "transactions",
+            "difficulty",
+            "hash"
+        ]
+
+        for field in required:
+
+            if field not in b:
+                return False
+
+        # =========================
+        # HEIGHT CHECK
+        # =========================
+        if b["index"] != len(chain_ref):
+            return False
+
+        # =========================
+        # PREVIOUS HASH CHECK
+        # =========================
+        if b["previous_hash"] != chain_ref[-1]["hash"]:
+            return False
+
+        # =========================
+        # TX STRING
+        # 🔥 IMPORTANT FIX
+        # SAME AS MINER
+        # =========================
+        tx_str = json.dumps(
+            b["transactions"],
+            sort_keys=True,
+            separators=(",", ":")
+        )
+
+        # =========================
+        # CALCULATE HASH
+        # =========================
+        h = calculate_hash(
+            b["index"],
+            b["previous_hash"],
+            b["timestamp"],
+            b["nonce"],
+            tx_str
+        )
+
+        # =========================
+        # HASH CHECK
+        # =========================
+        if h != b["hash"]:
+
+            print("❌ Invalid hash")
+
+            return False
+
+        # =========================
+        # DIFFICULTY CHECK
+        # =========================
+        difficulty = int(
+            b.get("difficulty", 1)
+        )
+
+        if not h.startswith(
+            "0" * difficulty
+        ):
+
+            print("❌ Invalid POW")
+
+            return False
+
+        # =========================
+        # TX VALIDATION
+        # =========================
+        used_inputs = set()
+
+        for tx in b["transactions"]:
+
+            if not verify_tx(
+                tx,
+                used_inputs
+            ):
+
+                print("❌ Invalid TX")
+
+                return False
+
+        # =========================
+        # SUCCESS
+        # =========================
+        return True
+
+    except Exception as e:
+
+        print(
+            "❌ validate_block error:",
+            e
+        )
+
+        return False
 
 # =========================
 # 🔥 CHAIN WORK
@@ -2372,6 +2454,7 @@ def is_valid_full_chain(chain):
                 tx_str = json.dumps(
                     b.get("transactions", []),
                     sort_keys=True
+                    separators=(",", ":")
                 )
 
             except:
@@ -3003,6 +3086,7 @@ def safe_validate_block(block):
         tx_str = json.dumps(
             block["transactions"],
             sort_keys=True
+            separators=(",", ":")
         )
 
         calc_hash = calculate_hash(
