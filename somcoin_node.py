@@ -1268,7 +1268,7 @@ def create_genesis():
     # =========================
     tx_str = json.dumps(
         genesis["transactions"],
-        sort_keys=True
+        sort_keys=True,
         separators=(",", ":")
     )
 
@@ -2453,7 +2453,7 @@ def is_valid_full_chain(chain):
 
                 tx_str = json.dumps(
                     b.get("transactions", []),
-                    sort_keys=True
+                    sort_keys=True,
                     separators=(",", ":")
                 )
 
@@ -3085,7 +3085,7 @@ def safe_validate_block(block):
 
         tx_str = json.dumps(
             block["transactions"],
-            sort_keys=True
+            sort_keys=True,
             separators=(",", ":")
         )
 
