@@ -4205,6 +4205,72 @@ last_mine_time = 0
 MINE_COOLDOWN = 1.5   # anti spam
 
 # ==================================================
+# UPDATE SINGLE BLOCK UTXO
+# ==================================================
+def update_utxo(block):
+
+    global utxo_set
+    global address_balances
+
+    try:
+
+        for tx in block["transactions"]:
+
+            txid = hashlib.sha256(
+                json.dumps(tx, sort_keys=True).encode()
+            ).hexdigest()
+
+            # =========================
+            # REMOVE SPENT INPUTS
+            # =========================
+            for inp in tx.get("inputs", []):
+
+                key = f'{inp["txid"]}:{inp["index"]}'
+
+                spent = utxo_set.get(key)
+
+                if spent:
+
+                    addr = spent["address"]
+                    amt = spent["amount"]
+
+                    address_balances[addr] = round(
+                        address_balances.get(addr, 0) - amt,
+                        8
+                    )
+
+                    del utxo_set[key]
+
+            # =========================
+            # ADD OUTPUTS
+            # =========================
+            for i, out in enumerate(tx.get("outputs", [])):
+
+                amount = round(out.get("amount", 0), 8)
+
+                if amount <= 0:
+                    continue
+
+                addr = out["address"]
+
+                key = f"{txid}:{i}"
+
+                utxo_set[key] = {
+                    "address": addr,
+                    "amount": amount
+                }
+
+                address_balances[addr] = round(
+                    address_balances.get(addr, 0) + amount,
+                    8
+                )
+
+    except Exception as e:
+
+        print("update_utxo error:", e)
+
+
+# ==================================================
 # 🚀 PROCESS NEW BLOCK
 # SINGLE SOURCE OF TRUTH
 # ULTRA SECURE FINAL 2026
@@ -4437,6 +4503,7 @@ def process_new_block(block):
         )
 
         return False
+
 
 # =========================================================
 # 🚀 SUBMIT BLOCK
