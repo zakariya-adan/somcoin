@@ -194,8 +194,9 @@ signal.signal(
     signal_handler
 )
 
+
 # =========================================================
-# ⛏ ULTRA PRO MAX  MINER
+# ⛏ ULTRA PRO MAX MINER (FIXED FINAL 2026)
 # =========================================================
 
 def mine():
@@ -246,8 +247,14 @@ def mine():
                 tpl["difficulty"]
             )
 
+            # 🔥 IMPORTANT FIX
+            # USE TEMPLATE TIMESTAMP
+            timestamp = tpl["timestamp"]
+
             txs = tpl["transactions"]
 
+            # 🔥 IMPORTANT FIX
+            # SAME ENCODING AS NODE
             tx_str = json.dumps(
                 txs,
                 sort_keys=True,
@@ -275,14 +282,6 @@ def mine():
             # =================================================
 
             while running:
-
-                # =============================================
-                # DYNAMIC TIMESTAMP
-                # =============================================
-
-                timestamp = int(
-                    time.time()
-                )
 
                 # =============================================
                 # TEMPLATE REFRESH
@@ -318,7 +317,7 @@ def mine():
                         )
 
                 # =============================================
-                # BUILD BLOCK
+                # BUILD BLOCK HASH
                 # =============================================
 
                 block_data = (
@@ -336,7 +335,6 @@ def mine():
                 )
 
                 hashes += 1
-
                 shares += 1
 
                 # =============================================
@@ -356,7 +354,6 @@ def mine():
                     )
 
                     if elapsed <= 0:
-
                         elapsed = 1
 
                     hr = int(
@@ -409,7 +406,7 @@ def mine():
                     )
 
                     # =========================================
-                    # BUILD BLOCK OBJECT
+                    # BUILD BLOCK
                     # =========================================
 
                     block = {
@@ -450,7 +447,7 @@ def mine():
                     )
 
                     # =========================================
-                    # ACCEPTED
+                    # SUCCESS
                     # =========================================
 
                     if (
@@ -478,7 +475,7 @@ def mine():
                             "❌ BLOCK REJECTED"
                         )
 
-                    # ALWAYS RESTART
+                    # ALWAYS REFRESH TEMPLATE
                     break
 
                 # =============================================
