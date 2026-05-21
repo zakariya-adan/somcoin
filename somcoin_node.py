@@ -37,8 +37,8 @@ leaderboard = {}
 # =========================
 app = Flask(__name__)
 
-MAX_DIFFICULTY = 5
-MIN_DIFFICULTY = 3
+MAX_DIFFICULTY = 6
+MIN_DIFFICULTY = 4
 
 # =========================
 # DIFFICULTY SYSTEM
@@ -68,7 +68,7 @@ def get_new_difficulty(chain):
     return difficulty
 
 # ==================================================
-# 🔥 NETWORK DIFFICULTY (BITCOIN STYLE FIXED)
+# 🔥 NETWORK DIFFICULTY ( STYLE FIXED)
 # ==================================================
 
 def dynamic_difficulty():
@@ -102,7 +102,7 @@ def dynamic_difficulty():
         return difficulty
 
 # ==================================================
-# 🌍 P2P CONFIG (PRO GLOBAL - REAL BITCOIN STYLE 🚀)
+# 🌍 P2P CONFIG (PRO GLOBAL - REAL STYLE 🚀)
 # ==================================================
 
 import time
@@ -336,10 +336,6 @@ def is_banned(ip):
             banned_until.pop(ip, None)
     return False
 
-def ban_ip(ip):
-    banned_until[ip] = time.time() + BAN_TIME
-    banned_ips.add(ip)
-    print("⛔ Banned IP:", ip)
 
 def smart_ban(ip, reason="unknown"):
     print(f"🚫 Banning {ip} | reason={reason}")
@@ -1167,7 +1163,7 @@ P2P_PORT = int(os.getenv("P2P_PORT", 9334))
 HTTP_PORT = int(os.getenv("PORT", 9443))
 
 # =========================
-# 🔥 BUILD BLOCK TX (BITCOIN STYLE)
+# 🔥 BUILD BLOCK TX
 # =========================
 def build_block_transactions(miner_address):
 
@@ -1200,7 +1196,7 @@ def build_block_transactions(miner_address):
     return [coinbase] + txs
 
 # ==================================================
-# GENESIS BLOCK (LOCKED + BITCOIN STYLE 🚀)
+# GENESIS BLOCK (LOCKED + STYLE 🚀)
 # ==================================================
 def create_genesis():
 
@@ -1594,7 +1590,7 @@ def create_transaction(sender, receiver, amount, fee=0.001):
     # 🔁 CHANGE
     change = round(total - amount - fee, 8)
 
-    # 🔥 DUST PROTECTION (Bitcoin style)
+    # 🔥 DUST PROTECTION
     if change > DUST_LIMIT:
         outputs.append({
             "address": sender,
@@ -2624,7 +2620,7 @@ def better_chain(new_chain):
 
         # =========================
         # WORK CHECK
-        # BITCOIN STYLE
+        # STYLE
         # =========================
         if new_work > local_work:
 
@@ -3478,7 +3474,7 @@ def request_chain():
 
 # ==================================================
 # 🚀 START BACKGROUND SERVICES
-# (BITCOIN STYLE + CLEAN FINAL 🔥)
+# ( STYLE + CLEAN FINAL 🔥)
 # ==================================================
 
 def start_background_services():
@@ -4682,7 +4678,7 @@ def get_block_headers(chain):
     return headers
 # ==================================================
 # 🚀 P2P BROADCAST
-# (ULTRA SAFE + BITCOIN STYLE 🔥)
+# (ULTRA SAFE + STYLE 🔥)
 # ==================================================
 import random
 
@@ -5930,7 +5926,7 @@ def smart_discovery():
         time.sleep(60)
 
 # ================================================
-# 🚀 START NODE (BITCOIN STYLE CLEAN FINAL)
+# 🚀 START NODE ( STYLE CLEAN FINAL)
 # ================================================
 if __name__ == "__main__":
 
