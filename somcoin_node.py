@@ -3814,7 +3814,7 @@ def handle_msg(msg, conn=None):
 
                     response = {
                         "type": "chain",
-                        "data": blockchain
+                        "data": blockchain[-500:]
                     }
 
                     conn.sendall(
@@ -5707,7 +5707,7 @@ def auto_sync():
         # =========================
         # LOOP DELAY
         # =========================
-        time.sleep(15)
+        time.sleep(60)
 
 # =========================
 # 🧱 ORPHAN SYSTEM
