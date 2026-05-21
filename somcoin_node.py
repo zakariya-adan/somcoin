@@ -336,6 +336,16 @@ def is_banned(ip):
             banned_until.pop(ip, None)
     return False
 
+def ban_ip(ip):
+
+    # TEMP DISABLE
+    return
+
+    banned_until[ip] = time.time() + BAN_TIME
+    banned_ips.add(ip)
+
+    print("⛔ Banned IP:", ip)
+
 
 def smart_ban(ip, reason="unknown"):
     print(f"🚫 Banning {ip} | reason={reason}")
