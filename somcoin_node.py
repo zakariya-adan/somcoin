@@ -37,8 +37,8 @@ leaderboard = {}
 # =========================
 app = Flask(__name__)
 
-MAX_DIFFICULTY = 6
-MIN_DIFFICULTY = 4
+MAX_DIFFICULTY = 7
+MIN_DIFFICULTY = 5
 
 # =========================
 # DIFFICULTY SYSTEM
@@ -337,9 +337,6 @@ def is_banned(ip):
     return False
 
 def ban_ip(ip):
-
-    # TEMP DISABLE
-    return
 
     banned_until[ip] = time.time() + BAN_TIME
     banned_ips.add(ip)
@@ -1427,7 +1424,7 @@ def verify_node(node_id, public_key, signature):
 
         pk_bytes = bytes.fromhex(public_key)
 
-        if len(pk_bytes) != 64:
+        if len(pk_bytes) not in (33, 64, 65):
             return False
 
         vk = VerifyingKey.from_string(pk_bytes, curve=SECP256k1)
@@ -1893,7 +1890,8 @@ def send():
             if any(tx_hash(t) == txid for t in pending_transactions):
                 return jsonify({"error": "duplicate transaction"}), 400
 
-            pending_transactions.append(tx)
+            with mempool_lock:
+                pending_transactions.append(tx)
 
         # =========================
         # SUCCESS
@@ -3453,102 +3451,103 @@ def random_bootstrap():
 
 # ==================================================
 # 🔥 REQUEST CHAIN FROM PEERS
+# ULTRA SECURE 2026
 # ==================================================
+
 def request_chain():
 
     peers = list(p2p_peers)
+
+    if not peers:
+
+        print("⚠️ No peers available")
+
+        return False
+
+    success = 0
 
     for peer in peers[:5]:
 
         try:
 
+            # =========================
+            # PARSE PEER
+            # =========================
+
             ip, port = peer.split(":")
 
-            s = socket.socket()
+            port = int(port)
+
+            # =========================
+            # CREATE SOCKET
+            # =========================
+
+            s = socket.socket(
+                socket.AF_INET,
+                socket.SOCK_STREAM
+            )
+
             s.settimeout(5)
 
-            s.connect((ip, int(port)))
+            # =========================
+            # CONNECT
+            # =========================
 
-            s.sendall(
-                (
-                    json.dumps({
-                        "type": "get_chain"
-                    }) + "\n"
-                ).encode()
-            )
+            s.connect((ip, port))
+
+            # =========================
+            # SEND REQUEST
+            # =========================
+
+            payload = {
+                "type": "get_chain"
+            }
+
+            message = (
+                json.dumps(payload)
+                + "\n"
+            ).encode()
+
+            s.sendall(message)
+
+            # =========================
+            # CLOSE
+            # =========================
 
             s.close()
 
-        except:
-            continue
+            success += 1
 
-# ==================================================
-# 🚀 START BACKGROUND SERVICES
-# ( STYLE + CLEAN FINAL 🔥)
-# ==================================================
-
-def start_background_services():
-
-    print("🚀 Starting background services...")
-
-    services = [
-
-        # 🔄 Peer rotation
-        ("rotate_peers", rotate_peers),
-
-        # 🧹 Remove dead peers
-        ("clean_dead_peers", clean_dead_peers),
-
-        # ❤️ Keep peers alive
-        ("ping_peers", ping_peers),
-
-        # 📡 Share peers
-        ("gossip_peers", gossip_peers),
-
-        # 🧠 Ensure minimum peers
-        ("ensure_minimum_peers", ensure_minimum_peers),
-
-        # 🌱 Auto expand seeds
-        ("auto_seed_expand", auto_seed_expand),
-
-        # ⚖️ Smart seed control
-        ("auto_seed_control", auto_seed_control),
-
-        # 🧼 Clean mempool
-        ("auto_clean_mempool", auto_clean_mempool),
-
-        # 🔄 Auto blockchain sync
-        ("auto_sync", auto_sync),
-    ]
-
-    started = set()
-
-    for name, target in services:
-
-        try:
-
-            # 🚫 prevent duplicate thread start
-            if name in started:
-                continue
-
-            threading.Thread(
-                target=target,
-                daemon=True,
-                name=name
-            ).start()
-
-            started.add(name)
-
-            print(f"✅ Started: {name}")
+            print(
+                f"📡 Chain requested from "
+                f"{peer}"
+            )
 
         except Exception as e:
 
             print(
-                f"❌ Failed to start {name}:",
+                f"⚠️ Failed peer {peer}:",
                 e
             )
 
-    print("🔥 All background services running")
+            continue
+
+    # =========================
+    # RESULT
+    # =========================
+
+    if success > 0:
+
+        print(
+            f"✅ Requested chain from "
+            f"{success} peers"
+        )
+
+        return True
+
+    print("❌ Could not request chain")
+
+    return False
 
 # ==================================================
 # 📩 HANDLE MESSAGE
@@ -3706,7 +3705,8 @@ def handle_msg(msg, conn=None):
             if len(pending_transactions) >= MAX_MEMPOOL:
                 return
 
-            pending_transactions.append(tx)
+            with mempool_lock:
+                pending_transactions.append(tx)
 
             print(
                 "📥 TX accepted:",
@@ -4275,7 +4275,6 @@ def update_utxo(block):
 
         print("update_utxo error:", e)
 
-
 # ==================================================
 # 🚀 PROCESS NEW BLOCK
 # SINGLE SOURCE OF TRUTH
@@ -4323,6 +4322,8 @@ def process_new_block(block):
 
                 save_data()
 
+                print("🔥 Genesis block accepted")
+
                 return True
 
             # =========================
@@ -4345,7 +4346,7 @@ def process_new_block(block):
             last_block = blockchain[-1]
 
             # =========================
-            # PREVIOUS HASH CHECK
+            # FORK HANDLING
             # =========================
 
             if (
@@ -4353,7 +4354,18 @@ def process_new_block(block):
                 != last_block["hash"]
             ):
 
-                print("⚠️ Bad previous hash")
+                print("⚠️ Fork detected")
+
+                try:
+
+                    request_chain()
+
+                except Exception as e:
+
+                    print(
+                        "⚠️ request_chain failed:",
+                        e
+                    )
 
                 return False
 
@@ -4367,6 +4379,17 @@ def process_new_block(block):
             ):
 
                 print("⚠️ Bad height")
+
+                try:
+
+                    request_chain()
+
+                except Exception as e:
+
+                    print(
+                        "⚠️ request_chain failed:",
+                        e
+                    )
 
                 return False
 
@@ -4509,7 +4532,6 @@ def process_new_block(block):
         )
 
         return False
-
 
 # =========================================================
 # 🚀 SUBMIT BLOCK
@@ -4900,7 +4922,7 @@ def get_public_ip():
         except:
             continue
 
-    return "127.0.0.1"
+    return os.getenv("NODE_IP", "")
 
 
 # ✅ FINAL NODE IP
@@ -5522,7 +5544,7 @@ def auto_sync():
                     port = int(port)
 
                     # 🚫 skip self
-                    if ip == NODE_IP:
+                    if ip == NODE_IP and port == P2P_PORT:
                         continue
 
                     # =========================
