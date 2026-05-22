@@ -10,7 +10,6 @@ import gc
 import os
 import signal
 import threading
-import socket
 
 # =========================================================
 # 🚀 PERFORMANCE
@@ -32,7 +31,7 @@ REQUEST_TIMEOUT = 120
 
 HASH_UPDATE_INTERVAL = 5_000_000
 
-TEMPLATE_REFRESH_NONCE = 1_000_000
+TEMPLATE_REFRESH_NONCE = 5_000_000
 
 AUTO_RECONNECT_DELAY = 3
 
@@ -60,24 +59,6 @@ def double_sha256(data):
         ).digest()
     ).hexdigest()
 
-# =========================================================
-# 🌐 CHECK NODE
-# =========================================================
-
-def node_online():
-
-    try:
-
-        r = session.get(
-            f"{NODE_URL}/health",
-            timeout=5
-        )
-
-        return r.status_code == 200
-
-    except:
-
-        return False
 
 # =========================================================
 # 📦 GET TEMPLATE
@@ -90,11 +71,8 @@ def get_template():
         timeout=REQUEST_TIMEOUT
     )
 
-    if r.status_code != 200:
-
-        raise Exception("template failed")
-
     return r.json()
+
 
 # =========================================================
 # 🚀 SEND HASHRATE
@@ -105,7 +83,6 @@ def send_hashrate(hr, shares_count):
     try:
 
         session.post(
-
             "https://somcoin.online/submit_miner",
 
             json={
@@ -119,6 +96,7 @@ def send_hashrate(hr, shares_count):
 
     except:
         pass
+
 
 # =========================================================
 # 🚀 SUBMIT BLOCK
@@ -155,6 +133,7 @@ def submit_block(block):
             "error": str(e)
         }
 
+
 # =========================================================
 # ❤️ HEALTH CHECK
 # =========================================================
@@ -189,6 +168,7 @@ def health_check():
 
         time.sleep(60)
 
+
 # =========================================================
 # 🚀 SIGNAL HANDLER
 # =========================================================
@@ -203,6 +183,7 @@ def signal_handler(sig, frame):
 
     os._exit(0)
 
+
 signal.signal(
     signal.SIGINT,
     signal_handler
@@ -213,8 +194,9 @@ signal.signal(
     signal_handler
 )
 
+
 # =========================================================
-# ⛏ MINER
+# ⛏ ULTRA PRO MAX MINER (FIXED FINAL 2026)
 # =========================================================
 
 def mine():
@@ -235,25 +217,9 @@ def mine():
 
         try:
 
-            # =============================================
-            # NODE CHECK
-            # =============================================
-
-            if not node_online():
-
-                print(
-                    "⚠️ Node offline..."
-                )
-
-                time.sleep(
-                    AUTO_RECONNECT_DELAY
-                )
-
-                continue
-
-            # =============================================
-            # GET TEMPLATE
-            # =============================================
+            # =================================================
+            # GET BLOCK TEMPLATE
+            # =================================================
 
             tpl = get_template()
 
@@ -263,17 +229,15 @@ def mine():
                 "error" in tpl
             ):
 
-                print(
-                    "❌ Template error"
-                )
+                print("❌ Template error")
 
                 time.sleep(2)
 
                 continue
 
-            # =============================================
-            # TEMPLATE
-            # =============================================
+            # =================================================
+            # TEMPLATE DATA
+            # =================================================
 
             index = tpl["index"]
 
@@ -283,10 +247,14 @@ def mine():
                 tpl["difficulty"]
             )
 
+            # 🔥 IMPORTANT FIX
+            # USE TEMPLATE TIMESTAMP
             timestamp = tpl["timestamp"]
 
             txs = tpl["transactions"]
 
+            # 🔥 IMPORTANT FIX
+            # SAME ENCODING AS NODE
             tx_str = json.dumps(
                 txs,
                 sort_keys=True,
@@ -309,15 +277,15 @@ def mine():
 
             start = time.time()
 
-            # =============================================
+            # =================================================
             # MINING LOOP
-            # =============================================
+            # =================================================
 
             while running:
 
-                # =========================================
+                # =============================================
                 # TEMPLATE REFRESH
-                # =========================================
+                # =============================================
 
                 if (
                     nonce %
@@ -329,6 +297,7 @@ def mine():
 
                         latest = get_template()
 
+                        # stale block protection
                         if (
                             latest["prev_hash"]
                             != prev_hash
@@ -347,9 +316,9 @@ def mine():
                             e
                         )
 
-                # =========================================
-                # BUILD HASH
-                # =========================================
+                # =============================================
+                # BUILD BLOCK HASH
+                # =============================================
 
                 block_data = (
 
@@ -368,9 +337,9 @@ def mine():
                 hashes += 1
                 shares += 1
 
-                # =========================================
+                # =============================================
                 # HASHRATE
-                # =========================================
+                # =============================================
 
                 if (
                     hashes %
@@ -403,9 +372,9 @@ def mine():
                         shares
                     )
 
-                # =========================================
+                # =============================================
                 # BLOCK FOUND
-                # =========================================
+                # =============================================
 
                 if h.startswith(target):
 
@@ -436,6 +405,10 @@ def mine():
                         "sec"
                     )
 
+                    # =========================================
+                    # BUILD BLOCK
+                    # =========================================
+
                     block = {
 
                         "index":
@@ -460,6 +433,10 @@ def mine():
                         h
                     }
 
+                    # =========================================
+                    # SUBMIT BLOCK
+                    # =========================================
+
                     result = submit_block(
                         block
                     )
@@ -468,6 +445,10 @@ def mine():
                         "📨 RESULT:",
                         result
                     )
+
+                    # =========================================
+                    # SUCCESS
+                    # =========================================
 
                     if (
                         isinstance(result, dict)
@@ -494,17 +475,23 @@ def mine():
                             "❌ BLOCK REJECTED"
                         )
 
+                    # ALWAYS REFRESH TEMPLATE
                     break
 
-                # =========================================
+                # =============================================
                 # NEXT NONCE
-                # =========================================
+                # =============================================
 
                 nonce += 1
 
+                # overflow protection
                 if nonce >= MAX_NONCE:
 
                     nonce = 0
+
+        # =====================================================
+        # CTRL + C
+        # =====================================================
 
         except KeyboardInterrupt:
 
@@ -513,6 +500,10 @@ def mine():
             )
 
             break
+
+        # =====================================================
+        # ERROR
+        # =====================================================
 
         except Exception as e:
 
